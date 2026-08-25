@@ -17,8 +17,18 @@ defmodule Station.Cargo do
   @spec presets() :: %{type() => map()}
   def presets, do: Application.fetch_env!(:station, :cargo_types)
 
+  @doc """
+  Cargo types cheapest first.
+
+  The registration screen reads left to right as the story does - ice, then ore,
+  then machinery, then the one that costs twenty times as much to inspect.
+  """
   @spec types() :: [type()]
-  def types, do: Map.keys(presets()) |> Enum.sort()
+  def types do
+    presets()
+    |> Enum.sort_by(fn {_type, preset} -> {preset.inspection_rounds, preset.chunks} end)
+    |> Enum.map(&elem(&1, 0))
+  end
 
   @spec preset(type()) :: map() | nil
   def preset(type), do: Map.get(presets(), type)

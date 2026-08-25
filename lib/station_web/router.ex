@@ -10,28 +10,35 @@ defmodule StationWeb.Router do
     plug :put_secure_browser_headers
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
+  # The ops panel gets both defences the concept asks for: an unguessable path
+  # segment and a password. Neither is much on its own; together they keep the
+  # station's kill switches off a QR code that a few hundred people scanned.
+  pipeline :ops do
+    plug :basic_auth
   end
 
   scope "/", StationWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    get "/", DockController, :new
+    post "/", DockController, :create
+    get "/leave", DockController, :delete
+
+    live_session :ship do
+      live "/ship", CockpitLive, :show
+      live "/tv", StationOpsLive, :show
+    end
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", StationWeb do
-  #   pipe_through :api
-  # end
+  scope "/ops", StationWeb do
+    pipe_through [:browser, :ops]
 
-  # Enable LiveDashboard in development
+    live_session :ops do
+      live "/:token", OpsLive, :show
+    end
+  end
+
   if Application.compile_env(:station, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
@@ -39,5 +46,12 @@ defmodule StationWeb.Router do
 
       live_dashboard "/dashboard", metrics: StationWeb.Telemetry
     end
+  end
+
+  defp basic_auth(conn, _opts) do
+    Plug.BasicAuth.basic_auth(conn,
+      username: Application.fetch_env!(:station, :ops_username),
+      password: Application.fetch_env!(:station, :ops_password)
+    )
   end
 end

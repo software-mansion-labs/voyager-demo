@@ -7,12 +7,9 @@ defmodule StationWeb.ConnCase do
   import other functionality to make it easier
   to build common data structures and query the data layer.
 
-  Finally, if the test case interacts with the database,
-  we enable the SQL sandbox, so changes done to the database
-  are reverted at the end of every test. If you are using
-  PostgreSQL, you can even run database tests asynchronously
-  by setting `use StationWeb.ConnCase, async: true`, although
-  this option is not recommended for other databases.
+  The station itself is a singleton - one warehouse, one docking bay, one
+  leaderboard - so these tests run serially and reset the shared state between
+  them rather than pretending each one gets its own.
   """
 
   use ExUnit.CaseTemplate
@@ -27,11 +24,38 @@ defmodule StationWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import Phoenix.LiveViewTest
       import StationWeb.ConnCase
     end
   end
 
   setup _tags do
+    Station.DockingBay.clear()
+    Station.Warehouse.flush()
+    Station.Leaderboard.reset()
+    Station.Metrics.reset()
+    Station.OpsPanel.set_warehouse_mode(:single_clerk)
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
+  end
+
+  @doc "A connection carrying a docked ship, the way a registered visitor has one."
+  def with_ship(conn, name \\ "Nostromo", cargo \\ "ice") do
+    {:ok, registered} = Station.DockingBay.dock(name, cargo)
+
+    conn = Plug.Test.init_test_session(conn, ship: Station.ShipNames.to_slug(registered))
+    {conn, registered}
+  end
+
+  @doc "Credentials for the ops panel, which sits behind basic auth."
+  def ops_auth(conn) do
+    Plug.Conn.put_req_header(
+      conn,
+      "authorization",
+      Plug.BasicAuth.encode_basic_auth(
+        Application.fetch_env!(:station, :ops_username),
+        Application.fetch_env!(:station, :ops_password)
+      )
+    )
   end
 end

@@ -59,6 +59,28 @@ defmodule Station.Leaderboard do
     end
   end
 
+  @doc """
+  Where a ship sits on the board.
+
+  A select_count rather than a sort: every docked phone asks for this once a
+  second, and the board can hold a whole conference by Sunday.
+  """
+  @spec rank(String.t()) :: pos_integer() | nil
+  def rank(ship) do
+    case :ets.lookup(@table, ship) do
+      [] ->
+        nil
+
+      [{_ship, _cargo, containers, _last}] ->
+        ahead =
+          :ets.select_count(@table, [
+            {{:_, :_, :"$1", :_}, [{:>, :"$1", containers}], [true]}
+          ])
+
+        ahead + 1
+    end
+  end
+
   @spec size() :: non_neg_integer()
   def size, do: :ets.info(@table, :size)
 

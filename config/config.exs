@@ -19,7 +19,9 @@ config :station,
   # from a fixed pool instead of one derived from what they typed.
   max_ship_atoms: 2_000,
   ship_ttl_ms: :timer.minutes(5),
-  hold_size: 200,
+  # One click removes exactly one box from the grid on the phone, so this is
+  # also the size of that grid.
+  hold_size: 120,
   # Server side, because a cookie clicker on a public URL invites autoclickers.
   # The congested ceiling is what makes a backed up station feel heavy in the thumb.
   transfer_limits: [per_second: 10, congested_per_second: 3, congested_queue: 250],
@@ -81,8 +83,12 @@ config :station,
   freighter_cargo_weights: [ice: 40, ore: 35, machinery: 20, antimatter: 5],
   freighter_runs: 60,
   haulers: 3,
+  # Multipliers for `Dispatch extra haulers`. They have to be big: the point of
+  # that button is that the memory trend turns around while somebody watches it,
+  # and a small boost only slows the climb down.
+  hauler_boosts: [1, 4, 8],
   hauler_interval_ms: 400,
-  hauler_batch: 8,
+  hauler_batch: 6,
 
   # --- safety ----------------------------------------------------------------
   watchdog: [max_queue: 5_000, max_run_queue: 200],

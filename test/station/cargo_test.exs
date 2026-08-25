@@ -3,6 +3,10 @@ defmodule Station.CargoTest do
 
   alias Station.Cargo
 
+  test "types read cheapest first, the way the registration screen tells it" do
+    assert ["ice", "ore", "machinery", "antimatter"] = Cargo.types()
+  end
+
   test "a hold is exactly as deep as configured" do
     hold = Cargo.build_hold("ore")
     assert length(hold) == Cargo.hold_size()
@@ -24,7 +28,7 @@ defmodule Station.CargoTest do
   test "background cargo weights sum to one and exclude nothing" do
     weights = Cargo.weighted_types()
     assert_in_delta Enum.sum(Enum.map(weights, &elem(&1, 1))), 1.0, 0.0001
-    assert Enum.map(weights, &elem(&1, 0)) |> Enum.sort() == Cargo.types()
+    assert Enum.map(weights, &elem(&1, 0)) |> Enum.sort() == Enum.sort(Cargo.types())
   end
 
   defp cost(type) do

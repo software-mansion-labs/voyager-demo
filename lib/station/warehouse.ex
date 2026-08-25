@@ -28,11 +28,20 @@ defmodule Station.Warehouse do
 
   @type mode :: :single_clerk | :inspection_crew
 
+  @gc_threshold 8 * 1024 * 1024
+
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  @doc "Hands one container to the warehouse. Fire and forget, on purpose."
-  @spec accept(String.t(), Cargo.container()) :: :ok
+  @doc """
+  Hands one container to the warehouse. Fire and forget, on purpose.
+
+  `ship` is the slug of a visitor's ship, or `nil` for the background fleet.
+  The fleet's cargo counts towards every metric on the wall but never towards
+  the leaderboard: a booth where the robots outscore the humans by a factor of
+  fifty has no leaderboard worth looking for your own name on.
+  """
+  @spec accept(String.t() | nil, Cargo.container()) :: :ok
   def accept(ship, container), do: GenServer.cast(__MODULE__, {:accept, ship, container})
 
   @doc "A hauler asking for cargo to take away."
@@ -90,6 +99,7 @@ defmodule Station.Warehouse do
       count: 0,
       bytes: 0,
       capacity: Application.fetch_env!(:station, :warehouse_capacity),
+      gc_watermark: 0,
       mode: OpsPanel.warehouse_mode(),
       sizes: Map.new(Cargo.presets(), fn {type, _} -> {type, Cargo.container_bytes(type)} end),
       crew: {},
@@ -131,7 +141,7 @@ defmodule Station.Warehouse do
       Metrics.add(:collected, length(taken))
     end
 
-    {:noreply, state}
+    {:noreply, collect_garbage(state)}
   end
 
   def handle_cast({:set_mode, mode}, state) do
@@ -155,7 +165,7 @@ defmodule Station.Warehouse do
 
   defp store(state, ship, container) do
     Metrics.add(:accepted, 1)
-    Leaderboard.record(ship, container.type)
+    if ship, do: Leaderboard.record(ship, container.type)
 
     bytes = Map.fetch!(state.sizes, container.type)
 
@@ -175,12 +185,16 @@ defmodule Station.Warehouse do
 
   # Above capacity the oldest cargo goes over the side. Without this the demo
   # eventually eats the box it runs on.
+  #
+  # Jettisoned a batch at a time rather than one container per message: at the
+  # ceiling every single arrival is an overflow, and one-in-one-out would put an
+  # identical line on the television several hundred times a second.
   defp enforce_capacity(%{count: count, capacity: capacity} = state) when count <= capacity do
     state
   end
 
   defp enforce_capacity(state) do
-    overflow = state.count - state.capacity
+    overflow = max(state.count - state.capacity, div(state.capacity, 20))
     {dropped, state} = take(state, overflow, [])
 
     Metrics.add(:dropped, length(dropped))
@@ -193,6 +207,25 @@ defmodule Station.Warehouse do
 
     state
   end
+
+  # Dropping references is not the same as giving the memory back: the process
+  # heap keeps its size until it is collected, and a GenServer holding hundreds
+  # of megabytes may sit on them for a long time. That would quietly break the
+  # producer/consumer demo, where dispatching haulers has to make the memory
+  # fall while somebody is watching. So once enough has been hauled away, the
+  # warehouse collects its own garbage - which costs it a pause, in its own
+  # process, exactly like it would in production.
+  defp collect_garbage(%{bytes: bytes, gc_watermark: watermark} = state)
+       when bytes < watermark - @gc_threshold do
+    :erlang.garbage_collect()
+    %{state | gc_watermark: bytes}
+  end
+
+  defp collect_garbage(%{bytes: bytes, gc_watermark: watermark} = state) when bytes > watermark do
+    %{state | gc_watermark: bytes}
+  end
+
+  defp collect_garbage(state), do: state
 
   defp take(state, 0, acc), do: {Enum.reverse(acc), state}
 

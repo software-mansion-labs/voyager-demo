@@ -81,10 +81,13 @@ defmodule StationWeb do
       import Phoenix.HTML
       # Core UI components
       import StationWeb.CoreComponents
+      import StationWeb.Replies
+      import StationWeb.StationComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias StationWeb.Layouts
+      alias StationWeb.Sprites
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

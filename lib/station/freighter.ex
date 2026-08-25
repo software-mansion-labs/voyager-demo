@@ -23,11 +23,7 @@ defmodule Station.Freighter do
     type = Cargo.random_type()
     interval = Keyword.fetch!(opts, :interval_ms)
 
-    state = %{
-      slug: opts |> Keyword.fetch!(:name) |> Atom.to_string(),
-      hold: Cargo.build_hold(type, runs),
-      interval: interval
-    }
+    state = %{hold: Cargo.build_hold(type, runs), interval: interval}
 
     schedule(interval)
     {:ok, state}
@@ -37,7 +33,7 @@ defmodule Station.Freighter do
   def handle_info(:deliver, %{hold: []} = state), do: {:stop, :normal, state}
 
   def handle_info(:deliver, %{hold: [container | rest]} = state) do
-    Warehouse.accept(state.slug, container)
+    Warehouse.accept(nil, container)
     schedule(state.interval)
     {:noreply, %{state | hold: rest}}
   end
