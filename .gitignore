@@ -35,3 +35,6 @@ station-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Leaderboard snapshots
+/priv/leaderboard*.ets

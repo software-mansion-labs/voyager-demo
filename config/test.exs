@@ -20,3 +20,41 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Station: local defaults. The prod values come from the environment, see
+# config/runtime.exs.
+# The background fleet is switched off in tests: it is the demo's sea level, and
+# a sea level makes assertions about the warehouse flaky. Cargo is tiny and the
+# inspection is cheap so the suite stays fast.
+config :station,
+  traffic: :quiet,
+  traffic_levels: %{
+    quiet: %{freighters: 0, interval_ms: 1_000},
+    normal: %{freighters: 1, interval_ms: 1_000},
+    rush_hour: %{freighters: 2, interval_ms: 1_000}
+  },
+  haulers: 0,
+  hold_size: 5,
+  warehouse_capacity: 10,
+  hauler_batch: 2,
+  max_ships: 3,
+  cargo_types: %{
+    "ice" => %{label: "ICE", chunks: 1, inspection_rounds: 10, blurb: "Light, cheap, endless."},
+    "ore" => %{label: "ORE", chunks: 2, inspection_rounds: 2_000, blurb: "The balanced default."},
+    "machinery" => %{
+      label: "MACHINERY",
+      chunks: 8,
+      inspection_rounds: 2_000,
+      blurb: "Bulky. Fills the warehouse fastest."
+    },
+    "antimatter" => %{
+      label: "ANTIMATTER",
+      chunks: 1,
+      inspection_rounds: 40_000,
+      blurb: "Tiny, and a nightmare to inspect."
+    }
+  },
+  leaderboard_path: "priv/leaderboard_test.ets",
+  ops_token: "dev",
+  ops_username: "ops",
+  ops_password: "ops"

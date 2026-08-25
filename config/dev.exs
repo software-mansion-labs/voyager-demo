@@ -75,3 +75,11 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Station: local defaults. The prod values come from the environment, see
+# config/runtime.exs.
+config :station,
+  leaderboard_path: "priv/leaderboard.ets",
+  ops_token: "dev",
+  ops_username: "ops",
+  ops_password: "ops"

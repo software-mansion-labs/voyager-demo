@@ -1,30 +1,39 @@
 defmodule Station.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
-  @moduledoc false
+  @moduledoc """
+  One application, one supervision tree, one system.
+
+  The child order is the station's boot order and it matters: settings and the
+  leaderboard first, then the inspection crew the warehouse looks for on start,
+  then the warehouse everything else talks to, then the ships and the fleet
+  that talk to it.
+
+  The names below are the names visitors will read off a television, so they
+  are chosen to make the tree explain itself without a legend.
+  """
 
   use Application
 
   @impl true
   def start(_type, _args) do
+    Station.Metrics.setup()
+
     children = [
       StationWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:station, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Station.PubSub},
-      # Start a worker by calling: Station.Worker.start_link(arg)
-      # {Station.Worker, arg},
-      # Start to serve requests, typically the last entry
+      Station.OpsPanel,
+      Station.Leaderboard,
+      Station.InspectionCrew,
+      Station.Warehouse,
+      Station.DockingBay,
+      Station.TrafficControl,
+      Station.Watchdog,
       StationWeb.Endpoint
     ]
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Station.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
-  # Tell Phoenix to update the endpoint configuration
-  # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
     StationWeb.Endpoint.config_change(changed, removed)
