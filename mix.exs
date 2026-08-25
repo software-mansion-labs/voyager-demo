@@ -74,6 +74,9 @@ defmodule Station.MixProject do
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind station", "esbuild station"],
+      # Everything a deploy needs, in the right order: a release built without
+      # this ships a manifest-less endpoint and every static asset 404s.
+      "station.release": ["assets.deploy", "release --overwrite"],
       "assets.deploy": [
         "tailwind station --minify",
         "esbuild station --minify",

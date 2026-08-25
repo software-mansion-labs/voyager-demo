@@ -275,20 +275,20 @@ defmodule StationWeb.OpsLive do
       phx-value-level={@values["level"]}
       phx-value-factor={@values["factor"]}
       data-confirm={@confirm}
-      class={[
-        "pixel-button flex flex-col items-start gap-1 p-3 text-left",
-        cond do
-          @active -> "bg-#{@tone} text-#{@tone}-content"
-          @tone == "error" -> "bg-base-200 text-error"
-          true -> "bg-base-200 text-base-content"
-        end
-      ]}
+      class={["pixel-button flex flex-col items-start gap-1 p-3 text-left", tone(@active, @tone)]}
     >
       <span class="font-pixel text-[10px]">{@label}</span>
       <span :if={@hint} class="font-mono text-[10px] opacity-70">{@hint}</span>
     </button>
     """
   end
+
+  # Written out rather than interpolated: Tailwind reads these class names out of
+  # the source, and a `bg-#{tone}` it cannot see is a class it does not build.
+  defp tone(true, "error"), do: "bg-error text-error-content"
+  defp tone(true, _), do: "bg-primary text-primary-content"
+  defp tone(false, "error"), do: "bg-base-200 text-error"
+  defp tone(false, _), do: "bg-base-200 text-base-content/70"
 
   defp hauler_hint(1), do: "baseline, too few on purpose"
   defp hauler_hint(factor), do: "#{factor} times the crew"

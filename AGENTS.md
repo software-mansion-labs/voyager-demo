@@ -435,3 +435,29 @@ And **never** do this:
 <!-- phoenix:liveview-end -->
 
 <!-- usage-rules-end -->
+
+## Station VOY-1 conventions
+
+This is a booth demo, not a product. Read `README.md` and `docs/concept.md`
+first - most of what looks odd here is deliberate and the reason is written
+down.
+
+Four rules the code sticks to, all of which the demo would break without:
+
+- **Never send `Station.Warehouse` a message to measure it.** It is the process
+  the demo deliberately congests, so a dashboard asking it about itself queues
+  behind the cargo it is trying to measure. `Station.Watchdog` samples it once
+  per tick into `Station.Metrics` (lock-free `:counters`); everything else reads
+  from there.
+- **Cargo stays a term, never one big binary.** A large refc binary is shared
+  rather than copied, so ship memory would stop falling and warehouse memory
+  would stop rising - and the whole visual would quietly become untrue.
+- **Tuning lives in one block at the top of `config/config.exs`.** Anything the
+  booth staff might have to change on the first morning belongs there, not in
+  code. `mix station.calibrate` measures the result.
+- **Ship names become atoms on purpose.** That is the lesson on the wall. Any
+  change near `Station.ShipNames` or `Station.DockingBay` has to keep the blast
+  radius bounded: fixed charset, length cap, exact accounting, hard budget with
+  a finite fallback pool.
+
+No Ecto. All state is in processes, one ETS table and one file on disk.

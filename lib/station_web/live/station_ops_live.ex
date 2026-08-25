@@ -183,6 +183,26 @@ defmodule StationWeb.StationOpsLive do
                 ]} />
               </div>
 
+              <%!-- Outbound. One hauler per consumer on duty, which is what
+                    turns `Dispatch extra haulers` into something you can point
+                    at rather than a number that moves. --%>
+              <div class="flex items-center gap-3">
+                <span class="font-pixel text-[9px] text-base-content/50">OUTBOUND</span>
+                <div class="flex flex-1 flex-wrap items-center gap-1">
+                  <Sprites.hauler
+                    :for={_ <- 1..min(@fleet.haulers, 24)//1}
+                    :if={@fleet.haulers > 0}
+                    class="size-6 shrink-0 text-success"
+                  />
+                  <span :if={@fleet.haulers == 0} class="font-mono text-[11px] text-base-content/35">
+                    nothing leaving the station
+                  </span>
+                </div>
+                <span class="font-mono text-[11px] text-base-content/45">
+                  {format_count(@stats.collected)} hauled away
+                </span>
+              </div>
+
               <div class="flex flex-col gap-2">
                 <div class="flex items-baseline justify-between">
                   <span class="font-pixel text-[9px] text-base-content/50">MESSAGE QUEUE</span>
@@ -197,7 +217,7 @@ defmodule StationWeb.StationOpsLive do
                 <%!-- One crate per waiting message, up to the width of the panel.
                     Past that the number does the talking. --%>
                 <div class="mt-2 flex h-8 items-end gap-[3px]">
-                  <Sprites.crate_small
+                  <Sprites.container
                     :for={_ <- 1..max(@queue_crates, 1)//1}
                     :if={@queue_crates > 0}
                     class="size-7 text-warning"
@@ -212,7 +232,9 @@ defmodule StationWeb.StationOpsLive do
                 <div class="flex items-baseline justify-between">
                   <span class="font-pixel text-[9px] text-base-content/50">SHELVES</span>
                   <span class="font-mono text-[11px] text-base-content/45">
-                    {format_count(@stats.stored)} containers in process state
+                    {format_count(@stats.stored)} {if @stats.stored == 1,
+                      do: "container",
+                      else: "containers"} in process state
                   </span>
                 </div>
                 <div class="grid grid-cols-24 gap-[3px] content-start">
@@ -236,7 +258,7 @@ defmodule StationWeb.StationOpsLive do
                 <.readout
                   label="PROCESS MEMORY"
                   value={format_bytes(@stats.memory)}
-                  hint={"#{format_count(@stats.accepted)} accepted · #{format_count(@stats.collected)} hauled away"}
+                  hint={"#{format_count(@stats.accepted)} accepted · #{format_count(@stats.dropped)} jettisoned"}
                   tone="text-primary"
                 />
               </div>
