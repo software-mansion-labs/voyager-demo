@@ -65,6 +65,7 @@ defmodule Station.Ship do
       delivered: 0,
       tokens: max_rate(),
       last_refill: now_ms(),
+      last_press: now_ms(),
       docked_at: System.system_time(:second)
     }
 
@@ -76,18 +77,22 @@ defmodule Station.Ship do
 
   @impl true
   def handle_call(:transfer, _from, state) do
+    # A throttled press still counts as a thumb on the button, so it keeps the
+    # ship alive the same way a successful one does.
+    state = %{state | last_press: now_ms()}
+
     case take_token(state) do
       {:deny, retry_in, state} ->
         Metrics.add(:throttled, 1)
-        {:reply, {:throttled, retry_in}, state, ttl()}
+        {:reply, {:throttled, retry_in}, state, remaining(state)}
 
       {:allow, state} ->
         {reply, state} = ship_one(state)
-        {:reply, reply, state, ttl()}
+        {:reply, reply, state, remaining(state)}
     end
   end
 
-  def handle_call(:status, _from, state), do: {:reply, snapshot(state), state, ttl()}
+  def handle_call(:status, _from, state), do: {:reply, snapshot(state), state, remaining(state)}
 
   @impl true
   def handle_info(:timeout, state) do
@@ -95,7 +100,7 @@ defmodule Station.Ship do
     {:stop, :normal, state}
   end
 
-  def handle_info(_msg, state), do: {:noreply, state, ttl()}
+  def handle_info(_msg, state), do: {:noreply, state, remaining(state)}
 
   @impl true
   def terminate(_reason, state) do
@@ -178,6 +183,13 @@ defmodule Station.Ship do
   catch
     :exit, _ -> {:error, :gone}
   end
+
+  # Idle means nobody is pressing the button, not that nobody is looking at the
+  # page. The cockpit polls this process once a second to redraw its counters,
+  # so measuring from the last message would keep a ship docked for as long as
+  # a tab is open somewhere - and at a booth with a queue behind it, an
+  # abandoned tab holding one of twenty five berths is the expensive case.
+  defp remaining(state), do: max(ttl() - (now_ms() - state.last_press), 0)
 
   defp ttl, do: Application.fetch_env!(:station, :ship_ttl_ms)
 

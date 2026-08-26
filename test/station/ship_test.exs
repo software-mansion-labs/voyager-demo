@@ -48,10 +48,59 @@ defmodule Station.ShipTest do
              Ship.status(ship)
   end
 
+  # Idle means "nobody is pressing", not "nobody is connected". The cockpit polls
+  # this process every second to redraw its counters, so a ship that measured its
+  # own idleness from the last message would stay docked for as long as a tab was
+  # open on a table somewhere - holding one of twenty five berths with a queue of
+  # people behind it.
+  #
+  # The poller here never stops, which is the point: it has to be the silence on
+  # the button that ends the ship, not the silence on the socket.
+  test "a ship that stops shipping drifts off while the cockpit is still polling",
+       %{ship: ship} do
+    with_ttl(250)
+    ref = Process.monitor(Process.whereis(ship))
+    poller = poll_status(ship, 40)
+
+    assert_receive {:DOWN, ^ref, :process, _, :normal}, 2_000
+
+    Process.exit(poller, :kill)
+  end
+
+  test "a press keeps the ship docked", %{ship: ship} do
+    with_ttl(300)
+    ref = Process.monitor(Process.whereis(ship))
+
+    for _ <- 1..3 do
+      Process.sleep(120)
+      Ship.transfer(ship)
+    end
+
+    refute_receive {:DOWN, ^ref, :process, _, _}, 100
+    assert is_pid(Process.whereis(ship))
+  end
+
   test "talking to a ship that has already left does not blow up", %{ship: ship} do
     Ship.undock(ship)
     assert {:error, :gone} = Ship.transfer(ship)
     assert {:error, :gone} = Ship.status(ship)
+  end
+
+  defp with_ttl(milliseconds) do
+    original = Application.fetch_env!(:station, :ship_ttl_ms)
+    Application.put_env(:station, :ship_ttl_ms, milliseconds)
+    on_exit(fn -> Application.put_env(:station, :ship_ttl_ms, original) end)
+  end
+
+  # Stands in for the cockpit's refresh timer: asks and asks and never presses.
+  defp poll_status(ship, every) do
+    spawn(fn ->
+      Stream.repeatedly(fn ->
+        Ship.status(ship)
+        Process.sleep(every)
+      end)
+      |> Stream.run()
+    end)
   end
 
   # The bucket refills continuously, so a test that wants every transfer to land
