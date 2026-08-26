@@ -16,9 +16,21 @@ Two screens make the demo:
 | Booth staff | `/ops/<token>` | the two switches that are the demo |
 
 That head movement — left to the television, right to the laptop — is the whole
-point. Nothing on the television is a metaphor: the crates queueing outside the
-warehouse are `message_queue_len`, the shelves inside it are process state, and
-the leaderboard is a dump of an ETS table.
+point.
+
+The television is a scene, not a dashboard with pictures on it. Visitors' ships
+fly in and dock along the left arm, containers cross the gap to the station one
+at a time, the bay window fills up with what the warehouse is holding, and
+haulers on the right pull cargo back out. None of it is a metaphor: **every
+crate in flight is a delivery that actually happened in the last second**, the
+pile outside the bay door is `message_queue_len`, the bay window is process
+state, and the leaderboard is a dump of an ETS table. The phone shows the same
+crossing at arm's length — press the button and watch your container leave your
+ship.
+
+The one honest compromise is a cap on crates in flight: at a busy moment the
+station moves a few hundred containers a second, no television can draw that
+many, and past the cap the counters underneath carry the number.
 
 The full concept, including the reasoning behind each decision, is in
 [docs/concept.md](docs/concept.md).
@@ -177,6 +189,13 @@ station (app)
    └─ Station.Watchdog          – samples the vitals, cuts traffic if drowning
 ```
 
+The scene is server-authoritative and client-drawn. The LiveView sends one JSON
+snapshot per second — who is docked, what each of them shipped since the last
+tick, how many haulers are on duty, how deep the queue is — and a single hook
+turns that into ships, crossings and pickups. The scene sits behind
+`phx-update="ignore"`, so everything inside it belongs to the hook; anything the
+server renders in there freezes at mount.
+
 Two rules the code sticks to, both of which the demo depends on:
 
 - **Nothing asks the warehouse about itself.** It is the process we deliberately
@@ -207,6 +226,9 @@ while building it:
 - **Overflow is jettisoned in batches.** At the capacity ceiling every single
   arrival is an overflow, and one-in-one-out filled the event log with the same
   line hundreds of times a second.
+- **The television became a scene.** The concept described a pixel-art station
+  with ships and a conveyor; what it did not say is that a dashboard with sprites
+  on it reads as a dashboard. Ships now fly in, cargo crosses, haulers leave.
 - **`Station.ShipRegistry` does not exist.** Ships are registered under their
   own atom, so `Process.whereis/1` already does everything a `Registry` would
   have, one box fewer in the tree. `Station.Dispatcher` is the one addition:

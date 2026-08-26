@@ -29,6 +29,43 @@ defmodule StationWeb.StationOpsLiveTest do
     assert Station.Leaderboard.size() == 1
   end
 
+  describe "the scene payload" do
+    test "opens with nothing in the air, then animates only real deliveries", %{conn: conn} do
+      {:ok, name} = Station.DockingBay.dock("Nostromo", "ore")
+      {:ok, view, html} = live(conn, ~p"/tv")
+
+      # A screen that has been up for an hour must not open with an hour's worth
+      # of cargo in flight, so the first snapshot carries no deltas at all.
+      assert %{"ships" => [%{"delta" => 0, "cargo" => "ore", "id" => "ship_nostromo"}]} =
+               scene(html)
+
+      {:ok, _} = Station.Ship.transfer(name)
+      send(view.pid, :refresh)
+
+      assert %{"ships" => [%{"delta" => 1}]} = scene(render(view))
+    end
+
+    test "separates what the fleet delivered from what the visitors did", %{conn: conn} do
+      [container] = Station.Cargo.build_hold("ore", 1)
+      {:ok, view, _html} = live(conn, ~p"/tv")
+
+      Station.Warehouse.accept(nil, container)
+      :sys.get_state(Station.Warehouse)
+      send(view.pid, :refresh)
+
+      assert %{"fleetDelta" => 1, "ships" => []} = scene(render(view))
+    end
+  end
+
+  defp scene(html) do
+    [payload] = Regex.run(~r/data-scene="([^"]*)"/, html, capture: :all_but_first)
+
+    payload
+    |> String.replace("&quot;", ~s("))
+    |> String.replace("&amp;", "&")
+    |> Jason.decode!()
+  end
+
   test "the log collapses a line that repeats instead of scrolling it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/tv")
 

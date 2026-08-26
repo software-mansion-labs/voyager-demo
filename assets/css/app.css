@@ -134,6 +134,7 @@ body {
 :root {
   --sprite-ink: color-mix(in oklch, var(--color-base-300) 85%, black);
   --sprite-lit: color-mix(in oklch, currentColor 55%, white);
+  --sprite-bay: color-mix(in oklch, var(--color-base-300) 70%, black);
 }
 
 .font-pixel {
@@ -258,5 +259,232 @@ body {
 
   .crt::after {
     display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The scene
+
+   The television is not a dashboard with pictures on it. Ships fly in, dock,
+   and push containers across to the station one at a time; haulers pull them
+   out the other side. Every element below is positioned in percentages inside
+   one relative box, so the whole scene scales to whatever screen it lands on.
+   --------------------------------------------------------------------------- */
+
+.scene {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in oklch, var(--color-primary) 8%, transparent), transparent 55%),
+    var(--color-base-300);
+}
+
+/* Two star layers at different speeds. Cheap parallax, and it stops the scene
+   from looking like sprites glued to a flat rectangle. */
+.scene-stars {
+  position: absolute;
+  inset: -20% -10%;
+  pointer-events: none;
+  background-repeat: repeat;
+}
+
+.scene-stars-far {
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, var(--color-base-content) 100%, transparent),
+    radial-gradient(1px 1px at 47% 8%, var(--color-base-content) 100%, transparent),
+    radial-gradient(1px 1px at 73% 61%, var(--color-base-content) 100%, transparent),
+    radial-gradient(1px 1px at 31% 78%, var(--color-base-content) 100%, transparent),
+    radial-gradient(1px 1px at 88% 34%, var(--color-base-content) 100%, transparent);
+  background-size: 240px 180px;
+  opacity: 0.28;
+  animation: scene-drift 90s linear infinite;
+}
+
+.scene-stars-near {
+  background-image:
+    radial-gradient(2px 2px at 20% 40%, var(--color-base-content) 100%, transparent),
+    radial-gradient(2px 2px at 66% 15%, var(--color-base-content) 100%, transparent),
+    radial-gradient(2px 2px at 84% 72%, var(--color-base-content) 100%, transparent);
+  background-size: 400px 300px;
+  opacity: 0.45;
+  animation: scene-drift 45s linear infinite;
+}
+
+@keyframes scene-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-240px); }
+}
+
+.scene-actor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* Arrival and departure. Chunky rather than eased: the art is on a grid, so
+   the movement is too. */
+.scene-ship-arriving {
+  animation: scene-arrive 1.4s steps(28, end) both;
+}
+
+.scene-ship-leaving {
+  animation: scene-leave 1.1s steps(22, end) both;
+}
+
+@keyframes scene-arrive {
+  from { transform: translate(-50%, -50%) translateX(-40vw); opacity: 0; }
+  20% { opacity: 1; }
+  to { transform: translate(-50%, -50%) translateX(0); opacity: 1; }
+}
+
+@keyframes scene-leave {
+  from { transform: translate(-50%, -50%) translateX(0); opacity: 1; }
+  to { transform: translate(-50%, -50%) translateX(-36vw); opacity: 0; }
+}
+
+.scene-hauler-leaving {
+  animation: scene-depart 1.1s steps(22, end) both;
+}
+
+@keyframes scene-depart {
+  from { transform: translate(-50%, -50%) translateX(0); opacity: 1; }
+  to { transform: translate(-50%, -50%) translateX(36vw); opacity: 0; }
+}
+
+/* Idle hover, offset per ship so the row does not pulse in unison. */
+.scene-hover {
+  animation: scene-hover 2.4s steps(6, end) infinite;
+}
+
+@keyframes scene-hover {
+  0% { margin-top: 0; }
+  25% { margin-top: -3px; }
+  50% { margin-top: 0; }
+  75% { margin-top: 3px; }
+  100% { margin-top: 0; }
+}
+
+/* A container in flight. The hook animates position; this only styles it. */
+.scene-crate {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px color-mix(in oklch, currentColor 55%, transparent));
+}
+
+/* The queue: containers that arrived and are waiting outside the bay door.
+   This is `message_queue_len` and nothing else. */
+.scene-queued {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.scene-bay {
+  position: absolute;
+  display: grid;
+  gap: 1px;
+  align-content: end;
+  pointer-events: none;
+}
+
+.scene-bay span {
+  background-color: currentColor;
+}
+
+/* Ship names hang below the outer column and above the inner one, so a long
+   name never lands on its neighbour no matter how wide the screen is. */
+.scene-ship-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+[data-lane="0"] .scene-ship-label {
+  top: 100%;
+  margin-top: 5px;
+}
+
+[data-lane="1"] .scene-ship-label {
+  bottom: 100%;
+  margin-bottom: 5px;
+}
+
+/* The dock lights. Off by default, flared briefly as cargo lands. */
+.scene-port {
+  position: absolute;
+  width: 2.4%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background-color: currentColor;
+  opacity: 0;
+  transition: opacity 140ms steps(3, end);
+}
+
+.scene-port.is-hot {
+  opacity: 0.75;
+  transition-duration: 0ms;
+}
+
+.scene-thruster {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 6px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--color-warning);
+  animation: pixel-blink 0.3s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-stars-far,
+  .scene-stars-near,
+  .scene-hover,
+  /* Ship names hang below the outer column and above the inner one, so a long
+   name never lands on its neighbour no matter how wide the screen is. */
+.scene-ship-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+[data-lane="0"] .scene-ship-label {
+  top: 100%;
+  margin-top: 5px;
+}
+
+[data-lane="1"] .scene-ship-label {
+  bottom: 100%;
+  margin-bottom: 5px;
+}
+
+/* The dock lights. Off by default, flared briefly as cargo lands. */
+.scene-port {
+  position: absolute;
+  width: 2.4%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background-color: currentColor;
+  opacity: 0;
+  transition: opacity 140ms steps(3, end);
+}
+
+.scene-port.is-hot {
+  opacity: 0.75;
+  transition-duration: 0ms;
+}
+
+.scene-thruster {
+    animation: none;
   }
 }

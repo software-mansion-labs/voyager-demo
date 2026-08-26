@@ -2,11 +2,19 @@ defmodule StationWeb.StationOpsLive do
   @moduledoc """
   The television. The narrative half of the booth.
 
-  Everything on this screen is also true on the laptop next to it, which is the
-  whole trick: the visitor watches the station here and then confirms it in
-  Voyager two feet to the left. The scene is deliberately literal - the queue
-  in front of the warehouse is `message_queue_len`, the crates stacked inside
-  it are the process state, the leaderboard is a dump of the ETS table.
+  It is a scene, not a dashboard with pictures on it. Visitors' ships fly in and
+  dock along the left arm, containers cross the gap to the station one at a
+  time, the bay window fills with what the warehouse is holding, and haulers on
+  the right pull cargo back out.
+
+  None of it is decoration. Every crate in flight is a delivery that actually
+  happened in the last second, the pile outside the bay door is
+  `message_queue_len`, and the bay window is process state. The visitor watches
+  it here and then confirms every bit of it in Voyager, two feet to the left.
+
+  The one honest compromise is the cap: at a busy moment the station moves a few
+  hundred containers a second and no television can draw that, so past the cap
+  the counters underneath carry the number.
   """
 
   use StationWeb, :live_view
@@ -23,8 +31,7 @@ defmodule StationWeb.StationOpsLive do
 
   @refresh 1_000
   @log_size 7
-  @queue_crates 28
-  @shelf_slots 168
+  @queue_crates 16
 
   @impl true
   def mount(_params, _session, socket) do
@@ -34,8 +41,9 @@ defmodule StationWeb.StationOpsLive do
     end
 
     socket
-    |> assign(:page_title, "STATION OPS · STATION VOY-1")
     |> assign(:log, [])
+    |> assign(:page_title, "STATION OPS · STATION VOY-1")
+    |> assign(:previous, nil)
     |> refresh()
     |> ok()
   end
@@ -59,33 +67,28 @@ defmodule StationWeb.StationOpsLive do
 
   defp refresh(socket) do
     stats = Warehouse.stats()
+    fleet = Dispatcher.fleet()
+    ships = ships()
+    capacity = Application.fetch_env!(:station, :warehouse_capacity)
+    congested? = stats.queue >= @queue_crates
+
+    {scene, previous} = scene(ships, stats, fleet, capacity, congested?, socket.assigns.previous)
 
     socket
     |> assign(:stats, stats)
-    |> assign(:ships, ships())
+    |> assign(:fleet, fleet)
+    |> assign(:ships, ships)
+    |> assign(:congested?, congested?)
     |> assign(:capacity, DockingBay.capacity())
-    |> assign(:board, Leaderboard.top(9))
+    |> assign(:warehouse_capacity, capacity)
+    |> assign(:board, Leaderboard.top(12))
     |> assign(:board_size, Leaderboard.size())
-    |> assign(:fleet, Dispatcher.fleet())
     |> assign(:inspectors, InspectionCrew.size())
     |> assign(:settings, OpsPanel.settings())
-    |> assign(:queue_crates, min(stats.queue, @queue_crates))
-    |> assign(:shelf_slots, @shelf_slots)
-    |> assign(:congested?, stats.queue >= @queue_crates)
     |> assign(:processes, Metrics.get(:process_count))
     |> assign(:atoms, DockingBay.atom_budget())
-    |> assign(:warehouse_capacity, Application.fetch_env!(:station, :warehouse_capacity))
-    |> then(&assign(&1, :shelved, shelved(stats.stored, &1.assigns.warehouse_capacity)))
-  end
-
-  # The shelves are the warehouse's process state drawn as boxes. Whole crates
-  # only - a half crate would be a progress bar wearing a costume.
-  defp shelved(stored, capacity) do
-    stored
-    |> Kernel./(max(capacity, 1))
-    |> min(1.0)
-    |> Kernel.*(@shelf_slots)
-    |> round()
+    |> assign(:scene, scene)
+    |> assign(:previous, previous)
   end
 
   defp ships do
@@ -94,6 +97,48 @@ defmodule StationWeb.StationOpsLive do
         status != {:error, :gone},
         do: status
   end
+
+  # One snapshot per second, and the deltas the scene animates from. On the
+  # first tick every delta is zero, so a screen that has been up for an hour
+  # does not open with an hour's worth of cargo in the air.
+  defp scene(ships, stats, fleet, capacity, congested?, previous) do
+    delivered = Map.new(ships, &{&1.name, &1.delivered})
+
+    scene_ships =
+      for ship <- ships do
+        %{
+          id: to_string(ship.name),
+          label: to_string(ship.name),
+          cargo: ship.cargo_type,
+          delta: delta(previous && previous.delivered[ship.name], ship.delivered)
+        }
+      end
+
+    visitor_delta = scene_ships |> Enum.map(& &1.delta) |> Enum.sum()
+    accepted_delta = delta(previous && previous.accepted, stats.accepted)
+
+    payload = %{
+      ships: scene_ships,
+      haulers: fleet.haulers,
+      freighters: fleet.freighters,
+      haulerDelta: delta(previous && previous.collected, stats.collected),
+      fleetDelta: max(accepted_delta - visitor_delta, 0),
+      queue: stats.queue,
+      queueCrates: min(stats.queue, @queue_crates),
+      stored: safe_ratio(stats.stored, capacity),
+      congested: congested?
+    }
+
+    previous = %{delivered: delivered, accepted: stats.accepted, collected: stats.collected}
+
+    {Jason.encode!(payload), previous}
+  end
+
+  defp delta(nil, _current), do: 0
+  defp delta(previous, current), do: max(current - previous, 0)
+
+  defp safe_ratio(_value, 0), do: 0.0
+  defp safe_ratio(value, max), do: Float.round(min(value / max, 1.0), 4)
 
   @impl true
   def render(assigns) do
@@ -120,150 +165,101 @@ defmodule StationWeb.StationOpsLive do
               {@settings.traffic |> to_string() |> String.upcase() |> String.replace("_", " ")}
             </span>
             <span class="border-2 border-base-content/20 px-3 py-2 text-base-content/60">
-              {@processes} PROCESSES
+              {@inspectors} INSPECTORS
+            </span>
+            <span class="border-2 border-base-content/20 px-3 py-2 text-base-content/60">
+              {format_count(@processes)} PROCESSES
             </span>
           </div>
         </header>
 
-        <div class="grid min-h-0 flex-1 grid-cols-[1fr_1.4fr_1fr] gap-3">
-          <%!-- Docking bays: one sprite per person standing in the room. --%>
-          <section class="pixel-panel flex min-h-0 flex-col gap-2 p-3">
-            <div class="flex items-baseline justify-between">
-              <h2 class="font-pixel text-[10px] text-secondary">DOCKING BAY</h2>
-              <span class="font-mono text-[11px] text-base-content/45">
-                {length(@ships)}/{@capacity}
+        <div class="grid min-h-0 flex-1 grid-cols-[1fr_20rem] gap-3">
+          <div class="flex min-h-0 flex-col gap-3">
+            <%!-- The scene. Every actor inside is created by the hook from the
+                  snapshot on data-scene, so LiveView leaves the children alone. --%>
+            <section
+              id="station-scene"
+              phx-hook="StationScene"
+              phx-update="ignore"
+              data-scene={@scene}
+              class="scene pixel-panel min-h-0 flex-1"
+            >
+              <div class="scene-stars scene-stars-far"></div>
+              <div class="scene-stars scene-stars-near"></div>
+
+              <span class="absolute left-3 top-3 font-pixel text-[10px] text-secondary">
+                ARRIVALS
               </span>
-            </div>
-
-            <div class="flex items-center justify-between">
-              <Sprites.dock :for={_ <- 1..5} class="size-8 text-base-content/25" />
-            </div>
-
-            <ul class="grid min-h-0 flex-1 grid-cols-2 content-start gap-2 overflow-hidden">
-              <li
-                :for={ship <- @ships}
-                class="flex items-center gap-2 border-2 border-base-300 bg-base-100 p-2"
-              >
-                <Sprites.ship class={[
-                  "size-6 shrink-0 animate-bob",
-                  Sprites.cargo_color(ship.cargo_type)
-                ]} />
-                <div class="min-w-0">
-                  <p class="truncate font-mono text-[11px] text-base-content/80">{ship.name}</p>
-                  <p class="font-mono text-[10px] text-base-content/40">
-                    {ship.hold} left · {ship.delivered} sent
-                  </p>
-                </div>
-              </li>
-
-              <li
-                :if={@ships == []}
-                class="col-span-2 border-2 border-dashed border-base-300 p-4 text-center font-mono text-[11px] text-base-content/35"
-              >
-                No visitors docked. The automatic fleet is holding the station.
-              </li>
-            </ul>
-          </section>
-
-          <%!-- The warehouse, its queue and what it is holding. --%>
-          <section class="pixel-panel flex min-h-0 flex-col gap-3 p-3">
-            <div class="flex items-baseline justify-between">
-              <h2 class="font-pixel text-[10px] text-primary">WAREHOUSE</h2>
-              <span class="font-mono text-[11px] text-base-content/45">
-                {@inspectors} inspectors · {@fleet.freighters} freighters · {@fleet.haulers} haulers
+              <span class="absolute right-3 top-3 font-pixel text-[10px] text-success">
+                OUTBOUND
               </span>
-            </div>
 
-            <div class="flex min-h-0 flex-1 flex-col justify-between gap-4">
-              <div class="flex items-center gap-3">
-                <div class={["conveyor h-12 flex-1", @congested? && "conveyor-stalled"]}></div>
-                <Sprites.warehouse class={[
-                  "size-28 shrink-0",
-                  if(@congested?, do: "text-error animate-blink", else: "text-primary")
-                ]} />
-              </div>
+              <%!-- The station itself, and the bay window the hook fills with
+                    whatever the warehouse is holding. --%>
+              <%!-- The ports light up as cargo lands, so the eye is pulled to
+                    where the work is happening rather than to the counters. --%>
+              <span data-scene-port="in" class="scene-port text-primary" style="left: 28%; top: 50%">
+              </span>
+              <span data-scene-port="out" class="scene-port text-success" style="left: 72%; top: 50%">
+              </span>
 
-              <%!-- Outbound. One hauler per consumer on duty, which is what
-                    turns `Dispatch extra haulers` into something you can point
-                    at rather than a number that moves. --%>
-              <div class="flex items-center gap-3">
-                <span class="font-pixel text-[9px] text-base-content/50">OUTBOUND</span>
-                <div class="flex flex-1 flex-wrap items-center gap-1">
-                  <Sprites.hauler
-                    :for={_ <- 1..min(@fleet.haulers, 24)//1}
-                    :if={@fleet.haulers > 0}
-                    class="size-6 shrink-0 text-success"
-                  />
-                  <span :if={@fleet.haulers == 0} class="font-mono text-[11px] text-base-content/35">
-                    nothing leaving the station
-                  </span>
-                </div>
-                <span class="font-mono text-[11px] text-base-content/45">
-                  {format_count(@stats.collected)} hauled away
-                </span>
-              </div>
-
-              <div class="flex flex-col gap-2">
-                <div class="flex items-baseline justify-between">
-                  <span class="font-pixel text-[9px] text-base-content/50">MESSAGE QUEUE</span>
-                  <span class={[
-                    "font-pixel text-lg",
-                    if(@congested?, do: "text-error", else: "text-base-content")
-                  ]}>
-                    {format_count(@stats.queue)}
-                  </span>
-                </div>
-
-                <%!-- One crate per waiting message, up to the width of the panel.
-                    Past that the number does the talking. --%>
-                <div class="mt-2 flex h-8 items-end gap-[3px]">
-                  <Sprites.container
-                    :for={_ <- 1..max(@queue_crates, 1)//1}
-                    :if={@queue_crates > 0}
-                    class="size-7 text-warning"
-                  />
-                  <span :if={@queue_crates == 0} class="font-mono text-xs text-base-content/35">
-                    nothing waiting - the clerk is keeping up
-                  </span>
+              <div class="scene-actor" style="left: 50%; top: 50%; width: 48%">
+                <Sprites.station_hub class="w-full text-primary" />
+                <div
+                  data-scene-bay
+                  class="scene-bay text-primary"
+                  style="left: 30.5%; top: 39%; width: 39%; height: 32%; grid-template-columns: repeat(16, 1fr); grid-auto-rows: 1fr"
+                >
                 </div>
               </div>
 
-              <div class="flex flex-col gap-2">
-                <div class="flex items-baseline justify-between">
-                  <span class="font-pixel text-[9px] text-base-content/50">SHELVES</span>
-                  <span class="font-mono text-[11px] text-base-content/45">
-                    {format_count(@stats.stored)} {if @stats.stored == 1,
-                      do: "container",
-                      else: "containers"} in process state
-                  </span>
+              <%!-- The pile outside the bay door: message_queue_len, drawn as
+                    the queue it is. Both the crates and the caption belong to
+                    the hook - everything in here is behind phx-update="ignore",
+                    so anything the server rendered would freeze at mount. --%>
+              <div class="absolute bottom-4 left-1/2 flex w-1/2 -translate-x-1/2 flex-col items-center gap-2">
+                <div
+                  data-scene-queue
+                  class="flex min-h-[1.75rem] w-full flex-wrap items-end justify-center gap-[3px] text-warning"
+                >
                 </div>
-                <div class="grid grid-cols-24 gap-[3px] content-start">
-                  <Sprites.crate_small
-                    :for={slot <- 1..@shelf_slots}
-                    class={[
-                      "w-full",
-                      if(slot <= @shelved, do: "text-primary", else: "text-base-content/10")
-                    ]}
-                  />
-                </div>
+                <p data-scene-queue-label class="font-pixel text-sm text-base-content/60"></p>
               </div>
 
-              <div class="grid grid-cols-2 gap-2">
-                <.readout
-                  label="IN STATE"
-                  value={format_count(@stats.stored)}
-                  hint={"of #{format_count(@warehouse_capacity)} capacity"}
-                  tone="text-primary"
-                />
-                <.readout
-                  label="PROCESS MEMORY"
-                  value={format_bytes(@stats.memory)}
-                  hint={"#{format_count(@stats.accepted)} accepted · #{format_count(@stats.dropped)} jettisoned"}
-                  tone="text-primary"
-                />
-              </div>
-            </div>
-          </section>
+              <div data-scene-actors class="absolute inset-0"></div>
+            </section>
+
+            <section class="grid grid-cols-5 gap-2">
+              <.readout
+                label="DOCKED"
+                value={"#{length(@ships)}/#{@capacity}"}
+                tone="text-secondary"
+              />
+              <.readout
+                label="WH QUEUE"
+                value={format_count(@stats.queue)}
+                tone={if(@congested?, do: "text-error", else: "text-base-content")}
+              />
+              <.readout
+                label="IN STATE"
+                value={format_count(@stats.stored)}
+                hint={"of #{format_count(@warehouse_capacity)}"}
+                tone="text-primary"
+              />
+              <.readout
+                label="WH MEMORY"
+                value={format_bytes(@stats.memory)}
+                hint={"#{format_count(@stats.dropped)} jettisoned"}
+                tone="text-primary"
+              />
+              <.readout
+                label="HAULED AWAY"
+                value={format_count(@stats.collected)}
+                hint={"#{@fleet.haulers} haulers · #{@fleet.freighters} freighters"}
+                tone="text-success"
+              />
+            </section>
+          </div>
 
           <%!-- The leaderboard, styled as what it is: a dump of an ETS table. --%>
           <section class="pixel-panel flex min-h-0 flex-col gap-2 p-3">

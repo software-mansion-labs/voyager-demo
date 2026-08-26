@@ -131,6 +131,37 @@ defmodule StationWeb.CockpitLive do
           STATION CONGESTED - QUEUE: {format_count(@stats.queue)}
         </div>
 
+        <%!-- The same thing the television shows, at arm's length: the
+              container leaves this ship and crosses to the station. A throttled
+              press turns back short of the door, so backpressure is something
+              the visitor watches as well as feels. --%>
+        <section
+          id="cockpit-flight"
+          phx-hook=".Flight"
+          phx-update="ignore"
+          class="scene pixel-panel relative h-24"
+        >
+          <div class="scene-stars scene-stars-far"></div>
+
+          <div
+            class={["scene-actor w-12", Sprites.cargo_color(@status.cargo_type)]}
+            style="left: 14%; top: 50%"
+          >
+            <div class="scene-hover relative">
+              <span class="scene-thruster"></span>
+              <Sprites.ship class="w-full" />
+            </div>
+          </div>
+
+          <span data-flight-port class="scene-port text-primary" style="left: 74%; top: 50%"></span>
+
+          <div class="scene-actor w-24 text-primary" style="left: 84%; top: 50%">
+            <Sprites.station_hub class="w-full" />
+          </div>
+
+          <div data-flight-lane class="absolute inset-0"></div>
+        </section>
+
         <section class="pixel-panel p-3">
           <div class="flex items-baseline justify-between">
             <span class="font-pixel text-[9px] text-base-content/50">HOLD</span>
@@ -207,6 +238,55 @@ defmodule StationWeb.CockpitLive do
           </.link>
         </footer>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".Flight">
+        export default {
+          mounted() {
+            this.lane = this.el.querySelector("[data-flight-lane]");
+            this.port = this.el.querySelector("[data-flight-port]");
+            this.tone = (this.el.querySelector(".scene-actor").className.match(/text-\S+/) || ["text-primary"])[0];
+
+            this.handleEvent("station:transferred", () => this.launch(true));
+            this.handleEvent("station:throttled", () => this.launch(false));
+          },
+
+          // One press, one container, one crossing.
+          launch(arrives) {
+            const crate = document.createElement("div");
+            crate.className = `scene-crate w-5 ${arrives ? this.tone : "text-warning"}`;
+            crate.style.left = "22%";
+            crate.style.top = "50%";
+            crate.innerHTML = `<svg viewBox="0 0 16 16" class="pixelated w-full"><use href="#sprite-container"></use></svg>`;
+            this.lane.appendChild(crate);
+
+            const frames = arrives
+              ? [
+                  {left: "22%", top: "50%", opacity: 0.4},
+                  {left: "48%", top: "34%", opacity: 1, offset: 0.5},
+                  {left: "74%", top: "50%", opacity: 1},
+                ]
+              : [
+                  {left: "22%", top: "50%", opacity: 0.4},
+                  {left: "42%", top: "42%", opacity: 1, offset: 0.5},
+                  {left: "24%", top: "62%", opacity: 0},
+                ];
+
+            const animation = crate.animate(frames, {duration: 520, easing: "steps(14, end)"});
+
+            animation.onfinish = () => {
+              crate.remove();
+              if (!arrives) { return; }
+
+              this.port.classList.add("is-hot");
+              setTimeout(() => this.port.classList.remove("is-hot"), 140);
+            };
+
+            // A backgrounded tab can swallow the finish event, and a phone in a
+            // pocket is a backgrounded tab. Bound the leak.
+            setTimeout(() => crate.remove(), 1500);
+          }
+        }
+      </script>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Hold">
         export default {
