@@ -399,17 +399,23 @@ body {
   background-color: currentColor;
 }
 
-/* Ship names hang below the outer column and above the inner one, so a long
-   name never lands on its neighbour no matter how wide the screen is. */
+/* Ship names hang below one column and above the next, so a long name lands in
+   the gap between two neighbours rather than across one of them.
+
+   The name carries its own background, because at thirty docked ships the
+   columns are close enough that two labels still meet - and a name that cannot
+   be read is the one thing on this screen that must not happen. */
 .scene-ship-label {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   line-height: 1;
-  opacity: 0.9;
+  padding: 2px 4px;
+  background-color: color-mix(in oklch, var(--color-base-300) 88%, black);
+  color: var(--color-base-content);
 }
 
 [data-lane="0"] .scene-ship-label {
@@ -420,6 +426,11 @@ body {
 [data-lane="1"] .scene-ship-label {
   bottom: 100%;
   margin-bottom: 5px;
+}
+
+[data-lane="2"] .scene-ship-label {
+  top: 100%;
+  margin-top: 5px;
 }
 
 /* The dock lights. Off by default, flared briefly as cargo lands. */
@@ -453,23 +464,17 @@ body {
   .scene-stars-far,
   .scene-stars-near,
   .scene-hover,
-  /* Ship names hang below one column and above the next, so a long name lands in
-   the gap between two neighbours rather than across one of them.
-
-   The name carries its own background, because at thirty docked ships the
-   columns are close enough that two labels still meet - and a name that cannot
-   be read is the one thing on this screen that must not happen. */
+  /* Ship names hang below the outer column and above the inner one, so a long
+   name never lands on its neighbour no matter how wide the screen is. */
 .scene-ship-label {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   line-height: 1;
-  padding: 2px 4px;
-  background-color: color-mix(in oklch, var(--color-base-300) 88%, black);
-  color: var(--color-base-content);
+  opacity: 0.9;
 }
 
 [data-lane="0"] .scene-ship-label {
@@ -480,11 +485,6 @@ body {
 [data-lane="1"] .scene-ship-label {
   bottom: 100%;
   margin-bottom: 5px;
-}
-
-[data-lane="2"] .scene-ship-label {
-  top: 100%;
-  margin-top: 5px;
 }
 
 /* The dock lights. Off by default, flared briefly as cargo lands. */
