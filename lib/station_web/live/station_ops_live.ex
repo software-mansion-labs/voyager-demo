@@ -104,8 +104,10 @@ defmodule StationWeb.StationOpsLive do
   defp scene(ships, stats, fleet, capacity, congested?, previous) do
     delivered = Map.new(ships, &{&1.name, &1.delivered})
 
+    # Sorted by the board, because the scene draws the ranking: whoever has
+    # moved the most cargo takes the berth nearest the station.
     scene_ships =
-      for ship <- ships do
+      for ship <- Enum.sort_by(ships, & &1.delivered, :desc) do
         %{
           id: to_string(ship.name),
           label: to_string(ship.name),
