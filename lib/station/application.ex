@@ -2,10 +2,10 @@ defmodule Station.Application do
   @moduledoc """
   One application, one supervision tree, one system.
 
-  The child order is the station's boot order and it matters: settings and the
-  leaderboard first, then the inspection crew the warehouse looks for on start,
-  then the warehouse everything else talks to, then the ships and the fleet
-  that talk to it.
+  Two layers, because they fail for different reasons. This supervisor holds the
+  plumbing: telemetry, PubSub, the ops settings the demo reads on start, the
+  watchdog and the endpoint. Everything a visitor can see, touch or break lives
+  one level down, under `Station.Game`.
 
   The names below are the names visitors will read off a television, so they
   are chosen to make the tree explain itself without a legend.
@@ -21,11 +21,7 @@ defmodule Station.Application do
       StationWeb.Telemetry,
       {Phoenix.PubSub, name: Station.PubSub},
       Station.OpsPanel,
-      Station.Leaderboard,
-      Station.InspectionCrew,
-      Station.Warehouse,
-      Station.DockingBay,
-      Station.TrafficControl,
+      Station.Game,
       Station.Watchdog,
       StationWeb.Endpoint
     ]
