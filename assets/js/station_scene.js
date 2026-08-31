@@ -46,7 +46,6 @@ export const StationScene = {
 
     this.ships = new Map();
     this.haulers = [];
-    this.ambient = [];
     this.inFlight = 0;
     this.crates = new Map();
     this.timers = new Set();
@@ -78,13 +77,11 @@ export const StationScene = {
     this.sweepCrates();
     this.syncShips(state.ships);
     this.syncHaulers(state.haulers);
-    this.syncAmbient(state.freighters);
     this.paintBay(state.stored, state.congested);
     this.paintQueue(state.queue, state.queueCrates, state.congested);
 
     state.ships.forEach((ship) => this.launchCrates(ship));
     this.launchPickups(state.haulerDelta, state.haulers);
-    this.launchAmbientCrates(state.fleetDelta);
   },
 
   // --- ships -------------------------------------------------------------
@@ -174,41 +171,6 @@ export const StationScene = {
     });
   },
 
-  // --- background fleet --------------------------------------------------
-
-  // Freighters drift across a lane behind the station. They are the sea level
-  // the human waves show up against, so the scene is never empty at eight in
-  // the morning.
-  syncAmbient(freighters) {
-    const wanted = Math.min(Math.round(freighters / 4), 8);
-
-    while (this.ambient.length > wanted) this.ambient.pop().remove();
-
-    while (this.ambient.length < wanted) {
-      const el = document.createElement("div");
-      const lane = this.ambient.length % 2 === 0 ? 12 : 88;
-
-      el.className = "scene-actor text-base-content/25";
-      el.style.width = "3%";
-      el.style.top = `${lane + (this.ambient.length % 3) * 3}%`;
-      el.style.left = "-10%";
-      el.innerHTML = this.sprite("ship");
-
-      el.animate(
-        [{ left: "-10%" }, { left: "110%" }],
-        {
-          duration: 16000 + this.ambient.length * 2600,
-          iterations: Infinity,
-          easing: "linear",
-          delay: -this.ambient.length * 1900,
-        },
-      );
-
-      this.actors.appendChild(el);
-      this.ambient.push(el);
-    }
-  },
-
   // --- cargo in flight ---------------------------------------------------
 
   launchCrates(ship) {
@@ -224,19 +186,6 @@ export const StationScene = {
       this.after(Math.round(n * gap), () => {
         const nose = { x: known.berth.x + 2.5, y: known.berth.y };
         this.flyCrate(nose, LEFT_PORT, CARGO_COLOR[ship.cargo] || "");
-      });
-    }
-  },
-
-  launchAmbientCrates(delta) {
-    if (delta <= 0 || this.ambient.length === 0) return;
-
-    const count = Math.min(Math.ceil(delta / 12), 4);
-
-    for (let n = 0; n < count; n++) {
-      this.after(n * 220, () => {
-        const from = { x: 4, y: n % 2 === 0 ? 16 : 84 };
-        this.flyCrate(from, LEFT_PORT, "text-base-content/40");
       });
     }
   },
