@@ -12,6 +12,13 @@ defmodule Station.InspectionCrew do
 
   alias Station.Inspector
 
+  # The crew is published here as well as held by the supervisor, because the
+  # warehouse asks who is on shift once per container and must never wait on a
+  # message to find out. Writing a persistent term is expensive; staffing
+  # happens when ops presses a button, so that cost lands where nobody is
+  # counting microseconds.
+  @term_key {__MODULE__, :on_shift}
+
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts), do: DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -38,6 +45,15 @@ defmodule Station.InspectionCrew do
     |> Enum.sort()
   end
 
+  @doc """
+  The crew as a tuple, readable without sending anyone a message.
+
+  Empty when the crew is off shift, which is also what the warehouse falls back
+  on before ops has touched anything.
+  """
+  @spec on_shift() :: tuple()
+  def on_shift, do: :persistent_term.get(@term_key, {})
+
   @spec size() :: non_neg_integer()
   def size, do: DynamicSupervisor.count_children(__MODULE__).active
 
@@ -50,7 +66,7 @@ defmodule Station.InspectionCrew do
       DynamicSupervisor.start_child(__MODULE__, {Inspector, name: worker_name(n)})
     end
 
-    :ok
+    publish()
   end
 
   @spec dismiss() :: :ok
@@ -59,7 +75,7 @@ defmodule Station.InspectionCrew do
       DynamicSupervisor.terminate_child(__MODULE__, pid)
     end
 
-    :ok
+    publish()
   end
 
   @doc "Hands one container to the next inspector in the rotation."
@@ -67,6 +83,8 @@ defmodule Station.InspectionCrew do
   def dispatch(inspector, ship, container) do
     GenServer.cast(inspector, {:inspect, ship, container})
   end
+
+  defp publish, do: :persistent_term.put(@term_key, List.to_tuple(workers()))
 
   defp worker_name(n), do: :"inspector_#{String.pad_leading(to_string(n), 2, "0")}"
 end

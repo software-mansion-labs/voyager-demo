@@ -74,7 +74,6 @@ defmodule Station.OpsPanel do
   @impl true
   def handle_call({:set_warehouse_mode, mode}, _from, state) do
     apply_warehouse_mode(mode)
-    update(:warehouse_mode, mode)
     Events.emit(:ops, "WAREHOUSE MODE -> #{mode |> to_string() |> String.upcase()}")
     {:reply, :ok, state}
   end
@@ -113,15 +112,17 @@ defmodule Station.OpsPanel do
     {:reply, :ok, state}
   end
 
+  # The warehouse reads this setting per container, so the order here is the
+  # order that never leaves it routing cargo at a crew which is not there: put
+  # the crew on shift before the switch, and take it off after.
   defp apply_warehouse_mode(:inspection_crew) do
     InspectionCrew.staff(InspectionCrew.default_size())
-    Warehouse.set_mode(:inspection_crew)
+    update(:warehouse_mode, :inspection_crew)
   end
 
   defp apply_warehouse_mode(:single_clerk) do
-    Warehouse.set_mode(:single_clerk)
+    update(:warehouse_mode, :single_clerk)
     InspectionCrew.dismiss()
-    Warehouse.crew_changed()
   end
 
   defp update(key, value), do: settings() |> Map.put(key, value) |> put()

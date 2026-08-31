@@ -15,6 +15,12 @@ defmodule Station.Warehouse do
   queue climbs into the hundreds. In `:inspection_crew` mode this process only
   routes work to `Station.InspectionCrew` and merges the results, the queue
   drains in front of the audience and the load spreads across every scheduler.
+
+  Which mode it is in is read per container from `Station.OpsPanel`, never held
+  in this process's state. A container costs half a second to clear, so a switch
+  arriving as a message would sit behind the backlog it is meant to fix: at a
+  queue of a hundred, ops would press the button and watch nothing happen for a
+  minute. Read from a persistent term, the very next container goes to the crew.
   """
 
   use GenServer
@@ -51,15 +57,6 @@ defmodule Station.Warehouse do
   @doc "Result coming back from an inspector, in `:inspection_crew` mode."
   @spec inspected(String.t(), Cargo.container()) :: :ok
   def inspected(ship, container), do: GenServer.cast(__MODULE__, {:inspected, ship, container})
-
-  @spec set_mode(mode()) :: :ok
-  def set_mode(mode) when mode in [:single_clerk, :inspection_crew] do
-    GenServer.cast(__MODULE__, {:set_mode, mode})
-  end
-
-  @doc "Tells the warehouse the inspector pool changed size."
-  @spec crew_changed() :: :ok
-  def crew_changed, do: GenServer.cast(__MODULE__, :crew_changed)
 
   @doc "Empties the warehouse without restarting it."
   @spec flush() :: :ok
@@ -100,33 +97,16 @@ defmodule Station.Warehouse do
       bytes: 0,
       capacity: Application.fetch_env!(:station, :warehouse_capacity),
       gc_watermark: 0,
-      mode: OpsPanel.warehouse_mode(),
       sizes: Map.new(Cargo.presets(), fn {type, _} -> {type, Cargo.container_bytes(type)} end),
-      crew: {},
-      crew_size: 0,
       next: 0
     }
 
-    {:ok, refresh_crew(state)}
+    {:ok, state}
   end
 
   @impl true
-  def handle_cast({:accept, ship, container}, %{mode: :single_clerk} = state) do
-    _checksum = Cargo.inspect_container(container)
-    Metrics.add(:inspected, 1)
-    {:noreply, store(state, ship, container)}
-  end
-
-  def handle_cast({:accept, ship, container}, %{mode: :inspection_crew, crew_size: 0} = state) do
-    _checksum = Cargo.inspect_container(container)
-    Metrics.add(:inspected, 1)
-    {:noreply, store(state, ship, container)}
-  end
-
-  def handle_cast({:accept, ship, container}, %{mode: :inspection_crew} = state) do
-    inspector = elem(state.crew, rem(state.next, state.crew_size))
-    InspectionCrew.dispatch(inspector, ship, container)
-    {:noreply, %{state | next: state.next + 1}}
+  def handle_cast({:accept, ship, container}, state) do
+    {:noreply, route(state, ship, container, crew())}
   end
 
   def handle_cast({:inspected, ship, container}, state) do
@@ -144,23 +124,31 @@ defmodule Station.Warehouse do
     {:noreply, collect_garbage(state)}
   end
 
-  def handle_cast({:set_mode, mode}, state) do
-    {:noreply, refresh_crew(%{state | mode: mode})}
-  end
-
-  def handle_cast(:crew_changed, state) do
-    {:noreply, refresh_crew(state)}
-  end
-
   def handle_cast(:flush, state) do
     Metrics.sub(:stored, state.count)
     Metrics.sub(:stored_bytes, state.bytes)
     {:noreply, %{state | cargo: :queue.new(), count: 0, bytes: 0}}
   end
 
-  defp refresh_crew(state) do
-    crew = InspectionCrew.workers() |> List.to_tuple()
-    %{state | crew: crew, crew_size: tuple_size(crew), next: 0}
+  # An empty crew is both modes' fallback: single clerk by choice, and
+  # inspection crew in the moment before anybody has been put on shift.
+  defp crew do
+    case OpsPanel.warehouse_mode() do
+      :inspection_crew -> InspectionCrew.on_shift()
+      :single_clerk -> {}
+    end
+  end
+
+  defp route(state, ship, container, {}) do
+    _checksum = Cargo.inspect_container(container)
+    Metrics.add(:inspected, 1)
+    store(state, ship, container)
+  end
+
+  defp route(state, ship, container, crew) do
+    inspector = elem(crew, rem(state.next, tuple_size(crew)))
+    InspectionCrew.dispatch(inspector, ship, container)
+    %{state | next: state.next + 1}
   end
 
   defp store(state, ship, container) do
