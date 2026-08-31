@@ -28,36 +28,40 @@ config :station,
 
   # --- cargo -----------------------------------------------------------------
   # `chunks` are 32 byte pieces, so they decide how fast warehouse memory grows.
-  # `inspection_rounds` decide how expensive a single click is in reductions.
+  # `inspection_rounds` decide how long a single container takes to clear.
   # These two are knobs one and two of the four in the concept.
   #
-  # The defaults land near 0.5 / 3 / 3 / 25 ms per container on an Apple M-class
-  # laptop. They are the numbers most likely to need retuning on the actual box
-  # on the first morning: `mix station.calibrate` prints the measured costs and
+  # The rounds below aim at 20 / 500 / 500 / 1000 ms per container, so a press is
+  # a visible piece of work rather than a blur: one antimatter container holds an
+  # inspector for a whole second. The conversion assumes roughly six thousand
+  # rounds per millisecond, which is what an Apple M-class laptop does.
+  #
+  # That assumption is the first thing to check on the actual box on the first
+  # morning: `mix station.calibrate` prints the measured cost per cargo type and
   # what the warehouse can absorb before its queue starts climbing.
   cargo_types: %{
     "ice" => %{
       label: "ICE",
       chunks: 16,
-      inspection_rounds: 3_000,
+      inspection_rounds: 120_000,
       blurb: "Light, cheap, endless."
     },
     "ore" => %{
       label: "ORE",
       chunks: 128,
-      inspection_rounds: 18_000,
+      inspection_rounds: 3_000_000,
       blurb: "The balanced default."
     },
     "machinery" => %{
       label: "MACHINERY",
       chunks: 1_024,
-      inspection_rounds: 18_000,
+      inspection_rounds: 3_000_000,
       blurb: "Bulky. Fills the warehouse fastest."
     },
     "antimatter" => %{
       label: "ANTIMATTER",
       chunks: 16,
-      inspection_rounds: 150_000,
+      inspection_rounds: 6_000_000,
       blurb: "Tiny, and a nightmare to inspect."
     }
   },
