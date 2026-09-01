@@ -126,6 +126,10 @@
 
 body {
   font-family: var(--font-mono);
+  /* Fast tapping is this application's main verb, and on iOS a fast second tap
+     is double-tap zoom: the page lurches and the button leaves the thumb.
+     `manipulation` keeps pinch zoom and panning, drops only the double tap. */
+  touch-action: manipulation;
 }
 
 /* Sprite shading. Two derived tones so a sprite only ever needs one colour set
@@ -248,9 +252,8 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* Literal rather than a mix, for the same reason as .scene above: Safari
-     drops a gradient that contains color-mix(), and takes the scanlines with
-     it. This is --color-base-300 at 55%. */
+  /* --color-base-300 at 55%, as a literal: one less function for a browser to
+     trip over in a gradient. */
   background-image: repeating-linear-gradient(
     180deg,
     oklch(12% 0.02 264 / 55%) 0 1px,
@@ -281,17 +284,10 @@ body {
    one relative box, so the whole scene scales to whatever screen it lands on.
    --------------------------------------------------------------------------- */
 
-/* Two rules for one background, and neither of them a `background` shorthand.
-
-   Safari renders `color-mix()` happily on its own - the ship labels use one -
-   but not inside a gradient: the function fails to parse, the whole `background`
-   declaration goes with it, and what shows through is the panel underneath, two
-   shades lighter. The scene became a grey box on the television and in the
-   phone's flight strip.
-
-   So the colour stands on its own, and the glow is written as a literal alpha
-   instead of a mix. The literal is `--color-primary` from the theme block at
-   the top of this file; if that changes, this changes with it. */
+/* The colour and the glow are separate rules on purpose: a browser that drops
+   one gradient then only loses the glow, never the floor under the scene. The
+   glow literal is `--color-primary` with an 8% alpha; the grey-television bug
+   itself was the star layers below, not this. */
 .scene {
   position: relative;
   overflow: hidden;
@@ -312,13 +308,19 @@ body {
   background-repeat: repeat;
 }
 
+/* The star colour is an sRGB literal, and that is load-bearing. Written as the
+   theme's oklch token - directly or through var() - Safari floods every tile
+   with the colour instead of drawing a one pixel dot, and two flooded layers
+   over the scene turn the whole television light grey. Bisected in Safari:
+   the same gradient with a hex colour draws dots, with an oklch colour it
+   floods, animation or no animation. This is --color-base-content in sRGB. */
 .scene-stars-far {
   background-image:
-    radial-gradient(1px 1px at 12% 22%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 47% 8%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 73% 61%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 31% 78%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 88% 34%, var(--color-base-content) 100%, transparent);
+    radial-gradient(1px 1px at 12% 22%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 47% 8%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 73% 61%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 31% 78%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 88% 34%, #e4eaf3 100%, transparent);
   background-size: 240px 180px;
   opacity: 0.28;
   animation: scene-drift 90s linear infinite;
@@ -326,9 +328,9 @@ body {
 
 .scene-stars-near {
   background-image:
-    radial-gradient(2px 2px at 20% 40%, var(--color-base-content) 100%, transparent),
-    radial-gradient(2px 2px at 66% 15%, var(--color-base-content) 100%, transparent),
-    radial-gradient(2px 2px at 84% 72%, var(--color-base-content) 100%, transparent);
+    radial-gradient(2px 2px at 20% 40%, #e4eaf3 100%, transparent),
+    radial-gradient(2px 2px at 66% 15%, #e4eaf3 100%, transparent),
+    radial-gradient(2px 2px at 84% 72%, #e4eaf3 100%, transparent);
   background-size: 400px 300px;
   opacity: 0.45;
   animation: scene-drift 45s linear infinite;
