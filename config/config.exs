@@ -24,22 +24,27 @@ config :station,
   hold_size: 120,
   # Server side, because a cookie clicker on a public URL invites autoclickers.
   # The congested ceiling is what makes a backed up station feel heavy in the thumb.
-  # Two presses a second, one while the station is backed up. A container costs
-  # half a second to clear, so ten a second was a rate no station could ever
-  # serve: the queue only ever grew. At two, a couple of visitors are enough to
-  # bury one clerk - which is the demo - and the inspection crew can still drain
-  # what a booth's worth of thumbs produces.
-  transfer_limits: [per_second: 2, congested_per_second: 1, congested_queue: 100],
+  # Four presses a second, two while the station is backed up. Ten was a rate no
+  # station could serve at these costs, so the queue only ever grew; two was
+  # slow enough that the button felt broken and the throttle notice was the
+  # normal state rather than the interesting one. At four, one excited visitor
+  # can push a single clerk over on their own, and the congested ceiling halves
+  # the whole room to what the inspection crew can actually drain.
+  transfer_limits: [per_second: 4, congested_per_second: 2, congested_queue: 100],
 
   # --- cargo -----------------------------------------------------------------
   # `chunks` are 32 byte pieces, so they decide how fast warehouse memory grows.
   # `inspection_rounds` decide how long a single container takes to clear.
   # These two are knobs one and two of the four in the concept.
   #
-  # The rounds below aim at 20 / 500 / 500 / 1000 ms per container, so a press is
-  # a visible piece of work rather than a blur: one antimatter container holds an
-  # inspector for a whole second. Measured at 6060 rounds per millisecond on an
-  # M-class laptop, which is where those numbers come from.
+  # The rounds below aim at 20 / 200 / 200 / 400 ms per container. A press is
+  # still a visible piece of work rather than a blur, but half a second a
+  # container meant one clerk cleared two a second, so a queue built by a few
+  # excited thumbs took half a minute of dead air to work off after everybody
+  # had stopped pressing. At 200 ms one clerk clears five a second: the queue
+  # still climbs in front of an audience, and it comes back down while they are
+  # still looking at it. Measured at 6060 rounds per millisecond on an M-class
+  # laptop, which is where these numbers come from.
   #
   # Every number under here is downstream of those four: one clerk clears about
   # three containers a second, and the fleet, the click rate and the haulers are
@@ -56,19 +61,19 @@ config :station,
     "ore" => %{
       label: "ORE",
       chunks: 128,
-      inspection_rounds: 3_000_000,
+      inspection_rounds: 1_200_000,
       blurb: "The balanced default."
     },
     "machinery" => %{
       label: "MACHINERY",
       chunks: 1_024,
-      inspection_rounds: 3_000_000,
+      inspection_rounds: 1_200_000,
       blurb: "Bulky. Fills the warehouse fastest."
     },
     "antimatter" => %{
       label: "ANTIMATTER",
       chunks: 16,
-      inspection_rounds: 6_000_000,
+      inspection_rounds: 2_400_000,
       blurb: "Tiny, and a nightmare to inspect."
     }
   },
@@ -90,9 +95,9 @@ config :station,
   # with nobody in the room and the queue still sits at zero, which is what
   # makes the queue climbing mean something when a crowd arrives.
   traffic_levels: %{
-    quiet: %{freighters: 10, interval_ms: 12_000},
-    normal: %{freighters: 20, interval_ms: 8_000},
-    rush_hour: %{freighters: 40, interval_ms: 3_000}
+    quiet: %{freighters: 10, interval_ms: 5_000},
+    normal: %{freighters: 20, interval_ms: 3_300},
+    rush_hour: %{freighters: 40, interval_ms: 1_200}
   },
   # Antimatter is mostly a visitor's choice. If the background fleet carried it
   # in equal measure the sea level would be antimatter and the punchline about
@@ -108,7 +113,7 @@ config :station,
   hauler_boosts: [1, 4, 8],
   # Deliberately just under what the fleet delivers, so an idle station creeps
   # upward instead of sitting flat, and a boost visibly turns the line around.
-  hauler_interval_ms: 2_500,
+  hauler_interval_ms: 1_200,
   hauler_batch: 2,
 
   # --- safety ----------------------------------------------------------------
