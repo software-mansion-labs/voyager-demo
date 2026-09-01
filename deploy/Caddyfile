@@ -1,0 +1,13 @@
+# TLS, HTTP/2 and the redirect from port 80, in four lines. Caddy fetches and
+# renews the certificate itself, so nothing on the booth box ever handles a key
+# and nobody has to remember an expiry date during a conference.
+#
+#   caddy run --config /etc/caddy/Caddyfile
+#
+# STATION_DOMAIN is the name on the QR code. It must match PHX_HOST in
+# /etc/station.env, or LiveView will refuse the websocket as a foreign origin
+# and every phone will sit there showing a dead page.
+{$STATION_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4000
+}

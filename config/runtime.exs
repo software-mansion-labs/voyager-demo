@@ -44,7 +44,11 @@ if config_env() == :prod do
         environment variable STATION_OPS_PASSWORD is missing.
         Generate one with: mix phx.gen.secret 32
         """),
-    ops_username: System.get_env("STATION_OPS_USERNAME", "ops")
+    ops_username: System.get_env("STATION_OPS_USERNAME", "ops"),
+    # What the QR code on the television points at. Unset means "whatever the
+    # endpoint calls itself", which is PHX_HOST. Set it when a shorter domain
+    # sits in front of the one the station is deployed under.
+    dock_url: System.get_env("STATION_DOCK_URL")
 end
 
 if config_env() == :prod do
@@ -66,13 +70,10 @@ if config_env() == :prod do
 
   config :station, StationWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
-    ],
+    # Loopback only. The station never faces the internet itself: Caddy holds
+    # the certificate and the public port and proxies to 127.0.0.1:4000, so the
+    # only ports open on the box are 443, 80 and SSH. See deploy/Caddyfile.
+    http: [ip: {127, 0, 0, 1}],
     secret_key_base: secret_key_base
 
   # ## SSL Support

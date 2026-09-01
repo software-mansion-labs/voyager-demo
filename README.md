@@ -118,27 +118,56 @@ the station saturates with nobody in front of it, lower them.
 
 ## Deploying to the booth
 
-The station needs to be a **named node with a known cookie**, because the
-laptop has to be able to attach to it. Distribution ports stay closed: Voyager
-reaches it through an SSH tunnel with a proxied EPMD, which is itself one of the
-features being demonstrated.
+Visitors need one thing: a public HTTPS URL. They scan the QR code in the
+corner of the television, or read the line printed under it, and their phone
+talks to the station over whatever network it already has. Conference wifi
+falling over does not take the demo with it — it takes the laptop's SSH tunnel,
+which is what the tethering backup is for.
+
+Three files in `deploy/` are the whole setup:
+
+| file | goes to |
+| --- | --- |
+| `deploy/station.env.example` | `/etc/station.env`, filled in, `chmod 600` |
+| `deploy/station.service` | `/etc/systemd/system/station.service` |
+| `deploy/Caddyfile` | `/etc/caddy/Caddyfile` |
+
+**1. A name people can read off a screen.** Point an A record at the box. Keep
+it short: the QR code carries it, but somebody on 5G at the back of the aisle is
+going to type it with one thumb.
+
+**2. Build and ship.**
 
 ```bash
 MIX_ENV=prod mix station.release
+rsync -a --delete _build/prod/rel/station/ booth:/opt/station/
 ```
 
-Then on the box:
+**3. Set it running.** On the box, once:
 
 ```bash
-export STATION_NODE_NAME=station@127.0.0.1
-export STATION_COOKIE=...              # dedicated, rotated after the conference
-export SECRET_KEY_BASE=...             # mix phx.gen.secret
-export STATION_OPS_TOKEN=...           # mix phx.gen.secret 32
-export STATION_OPS_PASSWORD=...
-export STATION_LEADERBOARD_PATH=/var/lib/station/leaderboard.ets
-export PHX_HOST=... PORT=4000
-bin/server
+sudo useradd --system --shell /usr/sbin/nologin --home /opt/station station
+sudo install -m 600 -o root -g root station.env.example /etc/station.env
+sudo install -m 644 station.service /etc/systemd/system/station.service
+sudo install -m 644 Caddyfile /etc/caddy/Caddyfile
+sudo systemctl enable --now station caddy
 ```
+
+`STATION_DOMAIN` for Caddy and `PHX_HOST` in `/etc/station.env` have to be the
+same name. If they drift apart LiveView rejects the websocket as a foreign
+origin, and every phone shows a page that loads and then does nothing.
+
+**4. Open three ports and no more.** 443 and 80 for the phones, 22 for the
+laptop. The station itself listens on `127.0.0.1:4000` and distribution is not
+exposed at all: Voyager reaches the node through the SSH tunnel with a proxied
+EPMD, which is one of the features being demonstrated.
+
+```bash
+elixir --name station@127.0.0.1 --cookie station-voy-1 -S mix phx.server
+```
+
+is the same thing locally, for a rehearsal — `PORT=4010` if a station is
+already running on this machine.
 
 `STATION_NODE_NAME` and `STATION_COOKIE` are required rather than defaulted on
 purpose. A station that quietly came up unnamed would look perfect on the
@@ -166,6 +195,11 @@ Other deployment notes, in the order they will bite:
   machine sits idle is exactly what the run queues should show.
 - **Treat the credentials as burned.** A single-use VPS, a dedicated cookie, a
   dedicated SSH key, all rotated afterwards. Visitors touch the laptop.
+- **Print the QR code too.** The one on the television recruits the queue and
+  the aisle; a card on the desk serves the person already standing there. Both
+  carry the same URL, so a phone that cannot see the screen still gets in.
+  `STATION_DOCK_URL` overrides what the code points at, for when a shorter
+  domain sits in front of the one the station is deployed under.
 
 ## How it is built
 

@@ -40,10 +40,14 @@ defmodule StationWeb.StationOpsLive do
       Events.subscribe()
     end
 
+    url = dock_url()
+
     socket
     |> assign(:log, [])
     |> assign(:page_title, "STATION OPS · STATION VOY-1")
     |> assign(:previous, nil)
+    |> assign(:dock_url, display_url(url))
+    |> assign(:dock_qr, qr(url))
     |> refresh()
     |> ok()
   end
@@ -89,6 +93,32 @@ defmodule StationWeb.StationOpsLive do
     |> assign(:atoms, DockingBay.atom_budget())
     |> assign(:scene, scene)
     |> assign(:previous, previous)
+  end
+
+  # Where to send a phone. Defaults to whatever the endpoint thinks it is, which
+  # is right in development and right in production as long as PHX_HOST is set.
+  # STATION_DOCK_URL overrides it for the case the booth wants a short domain in
+  # front that the station itself never sees.
+  defp dock_url do
+    Application.get_env(:station, :dock_url) || StationWeb.Endpoint.url()
+  end
+
+  # Drawn once at mount rather than cached: a television loads this page a
+  # handful of times a day, and a stale QR code is the failure nobody notices
+  # until somebody is standing there with a phone.
+  defp qr(url) do
+    url
+    |> EQRCode.encode()
+    |> EQRCode.svg(viewbox: true, color: "#0d1220", background_color: "#ffffff")
+  end
+
+  # The scheme is noise on a line somebody is going to type, and phones add it
+  # back themselves.
+  defp display_url(url) do
+    url
+    |> String.replace_prefix("https://", "")
+    |> String.replace_prefix("http://", "")
+    |> String.trim_trailing("/")
   end
 
   defp ships do
@@ -258,55 +288,72 @@ defmodule StationWeb.StationOpsLive do
             </section>
           </div>
 
-          <%!-- The leaderboard, styled as what it is: a dump of an ETS table. --%>
-          <section class="pixel-panel flex min-h-0 flex-col gap-2 p-3">
-            <div class="flex items-baseline justify-between">
-              <h2 class="font-pixel text-[10px] text-success">:station_leaderboard</h2>
-              <span class="font-mono text-[11px] text-base-content/45">{@board_size} rows</span>
-            </div>
+          <div class="flex min-h-0 flex-col gap-3">
+            <%!-- The leaderboard, styled as what it is: a dump of an ETS table. --%>
+            <section class="pixel-panel flex min-h-0 flex-1 flex-col gap-2 p-3">
+              <div class="flex items-baseline justify-between">
+                <h2 class="font-pixel text-[10px] text-success">:station_leaderboard</h2>
+                <span class="font-mono text-[11px] text-base-content/45">{@board_size} rows</span>
+              </div>
 
-            <table class="w-full table-fixed font-mono text-[11px]">
-              <colgroup>
-                <col class="w-[52%]" />
-                <col class="w-[22%]" />
-                <col class="w-[15%]" />
-                <col class="w-[11%]" />
-              </colgroup>
-              <thead class="text-base-content/40">
-                <tr class="border-b-2 border-base-300">
-                  <th class="py-1 text-left font-normal">ship</th>
-                  <th class="py-1 text-left font-normal">cargo</th>
-                  <th class="py-1 text-right font-normal">boxes</th>
-                  <th class="py-1 text-right font-normal">last</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  :for={{row, index} <- Enum.with_index(@board, 1)}
-                  class="border-b border-base-300/60"
-                >
-                  <td class="truncate py-1 pr-2 text-base-content/80">
-                    <span class="text-base-content/35">{index}.</span> {row.ship}
-                  </td>
-                  <td class={["truncate py-1 pr-2", Sprites.cargo_color(row.cargo)]}>{row.cargo}</td>
-                  <td class="py-1 text-right text-primary">{format_count(row.containers)}</td>
-                  <td class="py-1 text-right text-base-content/40">
-                    {format_ago(row.last_delivery)}
-                  </td>
-                </tr>
-                <tr :if={@board == []}>
-                  <td colspan="4" class="py-4 text-center text-base-content/35">
-                    no deliveries yet - the board only counts visitors
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+              <table class="w-full table-fixed font-mono text-[11px]">
+                <colgroup>
+                  <col class="w-[52%]" />
+                  <col class="w-[22%]" />
+                  <col class="w-[15%]" />
+                  <col class="w-[11%]" />
+                </colgroup>
+                <thead class="text-base-content/40">
+                  <tr class="border-b-2 border-base-300">
+                    <th class="py-1 text-left font-normal">ship</th>
+                    <th class="py-1 text-left font-normal">cargo</th>
+                    <th class="py-1 text-right font-normal">boxes</th>
+                    <th class="py-1 text-right font-normal">last</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    :for={{row, index} <- Enum.with_index(@board, 1)}
+                    class="border-b border-base-300/60"
+                  >
+                    <td class="truncate py-1 pr-2 text-base-content/80">
+                      <span class="text-base-content/35">{index}.</span> {row.ship}
+                    </td>
+                    <td class={["truncate py-1 pr-2", Sprites.cargo_color(row.cargo)]}>
+                      {row.cargo}
+                    </td>
+                    <td class="py-1 text-right text-primary">{format_count(row.containers)}</td>
+                    <td class="py-1 text-right text-base-content/40">
+                      {format_ago(row.last_delivery)}
+                    </td>
+                  </tr>
+                  <tr :if={@board == []}>
+                    <td colspan="4" class="py-4 text-center text-base-content/35">
+                      no deliveries yet - the board only counts visitors
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
 
-            <p class="mt-auto font-mono text-[10px] leading-relaxed text-base-content/40">
-              Process state dies with the process. This table survives it, and its
-              snapshot on disk survives the node. Three levels, one story.
-            </p>
-          </section>
+              <p class="mt-auto font-mono text-[10px] leading-relaxed text-base-content/40">
+                Process state dies with the process. This table survives it, and its
+                snapshot on disk survives the node. Three levels, one story.
+              </p>
+            </section>
+
+            <%!-- The way in. It is on the television rather than only on the
+                  desk because the queue behind the booth can read a screen from
+                  the aisle, and that is where the next ship comes from. --%>
+            <section class="pixel-panel flex shrink-0 items-center gap-3 p-3">
+              <div class="w-40 shrink-0 bg-white p-1">{raw(@dock_qr)}</div>
+              <div class="flex min-w-0 flex-col gap-1">
+                <p class="font-pixel text-[10px] leading-tight text-primary">
+                  SCAN TO<br />DOCK A SHIP
+                </p>
+                <p class="font-mono text-[11px] leading-tight text-base-content/60">{@dock_url}</p>
+              </div>
+            </section>
+          </div>
         </div>
 
         <footer class="pixel-panel flex h-16 items-center gap-4 overflow-hidden p-3">

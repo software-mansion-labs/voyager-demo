@@ -1,0 +1,37 @@
+# /etc/systemd/system/station.service
+#
+#   systemctl enable --now station
+#   journalctl -u station -f
+#
+# Restart=always is the booth's real recovery plan: whatever happens in front of
+# a crowd, the station comes back on its own and the leaderboard comes back
+# with it, because the snapshot lives outside the release directory.
+[Unit]
+Description=Station VOY-1
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=station
+Group=station
+WorkingDirectory=/opt/station
+EnvironmentFile=/etc/station.env
+ExecStart=/opt/station/bin/server
+Restart=always
+RestartSec=2
+
+# /var/lib/station, created and owned by the unit. STATION_LEADERBOARD_PATH
+# points inside it.
+StateDirectory=station
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

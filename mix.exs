@@ -59,6 +59,8 @@ defmodule Station.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
+      # The QR code on the television. Pure Elixir, no NIF, renders SVG.
+      {:eqrcode, "~> 0.2"},
       {:bandit, "~> 1.5"}
     ]
   end
