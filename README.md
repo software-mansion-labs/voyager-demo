@@ -1,6 +1,6 @@
 # Station VOY-1
 
-A booth demo for ElixirConf. The BEAM node *is* a space station: visitors scan a
+A booth demo for ElixirConf. The BEAM node _is_ a space station: visitors scan a
 QR code, register a ship, and their ship joins this application's supervision
 tree as a named process. Everything they do afterwards is ordinary message
 passing between processes — and [Voyager](https://github.com/software-mansion/voyager),
@@ -8,12 +8,12 @@ running on a laptop next to the television, shows it as facts about a live node.
 
 Two screens make the demo:
 
-| Screen | URL | What it is |
-| --- | --- | --- |
-| Laptop | Voyager, attached over SSH | **the truth** |
-| Television | `/tv` | **the narrative** |
-| Visitor's phone | `/` then `/ship` | the thing worth pressing |
-| Booth staff | `/ops/<token>` | the two switches that are the demo |
+| Screen          | URL                        | What it is                         |
+| --------------- | -------------------------- | ---------------------------------- |
+| Laptop          | Voyager, attached over SSH | **the truth**                      |
+| Television      | `/tv`                      | **the narrative**                  |
+| Visitor's phone | `/` then `/ship`           | the thing worth pressing           |
+| Booth staff     | `/ops/<token>`             | the two switches that are the demo |
 
 That head movement — left to the television, right to the laptop — is the whole
 point.
@@ -57,8 +57,8 @@ elixir --sname station --cookie station-voy-1 -S mix phx.server
 Not a script to get through — a running order the staff can join and leave at
 any point.
 
-1. **"Register your ship."** `ship_*` slides into the supervision tree. *That
-   dot is you.*
+1. **"Register your ship."** `ship_*` slides into the supervision tree. _That
+   dot is you._
 2. **"Keep pressing."** Ship memory falls, warehouse memory rises, warehouse
    reductions climb. Two processes, one press.
 3. **"He is carrying ice, you are carrying antimatter."** Same press, twenty
@@ -70,7 +70,7 @@ any point.
 6. **Staff flips `INSPECTION CREW`.** The queue drains while everyone watches,
    the load spreads across every scheduler, the process count jumps.
 7. **"So why is memory still climbing?"** Too few haulers → `Dispatch extra
-   haulers` → the memory trend turns around.
+haulers` → the memory trend turns around.
 8. **"And your score?"** The ETS browser, your row in `:station_leaderboard`,
    which outlives all of it.
 9. **"Ask it something."** MCP answers in a normal sentence.
@@ -81,14 +81,18 @@ all of it in Voyager, inside a minute.**
 ## Tuning on the first morning
 
 Twenty-five idle GenServers are nothing on the BEAM, so the load is designed
-rather than incidental. Four knobs decide whether any of it is visible, and all
-four live in one block at the top of `config/config.exs`:
+rather than incidental — and all of it is visitors: nothing sends the warehouse
+a message except the people in the room. Four knobs decide whether any of it is
+visible, and all four live in one block at the top of `config/config.exs`:
 
-1. **`:inspection_rounds`** per cargo — whether one press is visible at all.
+1. **`:inspection_rounds`** per cargo — the cost of one press for one lone
+   visitor. The crowd divides it, so a room saturates the clerk by the same
+   margin as one racing thumb.
 2. **`:chunks`** per cargo — how fast warehouse memory grows.
-3. **`:traffic_levels`** — the sea level the human waves show up against.
-4. **`:haulers` and `:hauler_boosts`** — how fast memory creeps up, and how
-   hard the fix pulls it back.
+3. **`:ship_load_ms`** — the ramp: how fast one ship can ship, and what a
+   faster thumb piles up on its own process.
+4. **`:haulers` and `:hauler_boosts`** — the drain, and how hard the fix
+   pulls the memory back down.
 
 Measure before you turn anything:
 
@@ -96,25 +100,23 @@ Measure before you turn anything:
 mix station.calibrate
 ```
 
-It prints the measured cost of one container of each cargo type on *this*
+It prints the measured cost of one container of each cargo type on _this_
 machine, what the warehouse can absorb before its queue starts climbing, and
-the offered load at each traffic level. If a full house cannot push the station
-past 100%, the bottleneck demo will not fire — raise `:inspection_rounds`. If
-the station saturates with nobody in front of it, lower them.
+the load a racing room offers per clerk. If that number is under 100%, the
+bottleneck demo will not fire — raise `:inspection_rounds`.
 
 ## The ops panel
 
 `/ops/<token>`, behind both an unguessable path segment and a password.
 
-| Control | What it is for |
-| --- | --- |
-| `SINGLE CLERK` / `INSPECTION CREW` | the bottleneck demo, and its fix |
-| `x1` / `x4` / `x8` haulers | the producer/consumer demo, and its fix |
-| `QUIET` / `NORMAL` / `RUSH HOUR` | background traffic |
-| `REMOVE` next to a ship | a name that got past the filter |
-| `RESTART WAREHOUSE` | shows a supervisor restart: cargo dies, ETS survives |
-| `RESET STATION` | undock everyone, empty the shelves |
-| `RESET LEADERBOARD` | start a day from zero |
+| Control                            | What it is for                                       |
+| ---------------------------------- | ---------------------------------------------------- |
+| `SINGLE CLERK` / `INSPECTION CREW` | the bottleneck demo, and its fix                     |
+| `x1` / `x4` / `x8` haulers         | the producer/consumer demo, and its fix              |
+| `REMOVE` next to a ship            | a name that got past the filter                      |
+| `RESTART WAREHOUSE`                | shows a supervisor restart: cargo dies, ETS survives |
+| `RESET STATION`                    | undock everyone, empty the shelves                   |
+| `RESET LEADERBOARD`                | start a day from zero                                |
 
 ## Running the booth
 
@@ -123,7 +125,7 @@ domain and no certificate: the laptop runs the station, drives the television
 out of its second video output, and hands out the network the phones join.
 
 ```bash
-BIND_IP=0.0.0.0 elixir --sname station --cookie station-voy-1 -S mix phx.server
+BIND_IP=0.0.0.0 elixir --name station@127.0.0.1 --cookie station-voy-1 -S mix phx.server
 ```
 
 `BIND_IP` is the whole difference between a station a phone can reach and one
@@ -132,11 +134,11 @@ machine has no business being reachable from the room it is in.
 
 Then, on that laptop:
 
-| screen | where |
-| --- | --- |
-| television, second display, fullscreen | `/tv` |
-| Voyager, on the laptop's own screen | attaches to `station@<hostname>` with the cookie |
-| booth staff, on a phone | `/ops/dev`, username and password `ops` |
+| screen                                 | where                                            |
+| -------------------------------------- | ------------------------------------------------ |
+| television, second display, fullscreen | `/tv`                                            |
+| Voyager, on the laptop's own screen    | attaches to `station@<hostname>` with the cookie |
+| booth staff, on a phone                | `/ops/dev`, username and password `ops`          |
 
 The television carries the QR code, and the QR code carries **the address the
 laptop actually has on that network** - read off the running machine at page
@@ -189,10 +191,9 @@ station (app)
    │  ├─ ship_millennium_falcon
    │  └─ …                      (capped at ~25)
    ├─ Station.TrafficControl
-   │  ├─ Station.Dispatcher     – keeps both lines staffed
-   │  ├─ Station.FreighterLine  – producers, many
+   │  ├─ Station.Dispatcher     – keeps the hauler crew staffed
    │  └─ Station.HaulerLine     – consumers, deliberately too few
-   └─ Station.Watchdog          – samples the vitals, cuts traffic if drowning
+   └─ Station.Watchdog          – samples the vitals, sounds the alarm
 ```
 
 The scene is server-authoritative and client-drawn. The LiveView sends one JSON

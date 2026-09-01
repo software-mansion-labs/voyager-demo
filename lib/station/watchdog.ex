@@ -6,16 +6,15 @@ defmodule Station.Watchdog do
   congested by design. One sampler writes the numbers into `Station.Metrics`,
   every phone, dashboard and rate limiter reads them from there.
 
-  It is also the safety net: if the station is drowning it drops the background
-  traffic to `:quiet` on its own, so the booth stays up while a crowd is
-  standing in front of it.
+  It is also the alarm: if the station is drowning it says so on every screen.
+  There is no background traffic left to shed - all load is visitors - so the
+  fix is the room's, or the ops panel's.
   """
 
   use GenServer
 
   alias Station.Events
   alias Station.Metrics
-  alias Station.OpsPanel
   alias Station.Warehouse
 
   @interval 500
@@ -63,13 +62,7 @@ defmodule Station.Watchdog do
 
     cond do
       drowning? and not state.panicking? ->
-        OpsPanel.set_traffic(:quiet)
-
-        Events.emit(
-          :watchdog,
-          "WATCHDOG - STATION OVERLOADED, BACKGROUND TRAFFIC CUT TO QUIET",
-          :error
-        )
+        Events.emit(:watchdog, "WATCHDOG - STATION OVERLOADED", :error)
 
         %{state | panicking?: true, calm_ticks: 0}
 

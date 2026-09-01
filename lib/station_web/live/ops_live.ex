@@ -18,7 +18,6 @@ defmodule StationWeb.OpsLive do
   alias Station.Leaderboard
   alias Station.Metrics
   alias Station.OpsPanel
-  alias Station.TrafficControl
   alias Station.Warehouse
 
   @refresh 1_000
@@ -44,11 +43,6 @@ defmodule StationWeb.OpsLive do
   @impl true
   def handle_event("warehouse_mode", %{"mode" => mode}, socket) do
     OpsPanel.set_warehouse_mode(String.to_existing_atom(mode))
-    {:noreply, refresh(socket)}
-  end
-
-  def handle_event("traffic", %{"level" => level}, socket) do
-    OpsPanel.set_traffic(String.to_existing_atom(level))
     {:noreply, refresh(socket)}
   end
 
@@ -162,7 +156,7 @@ defmodule StationWeb.OpsLive do
             <h2 class="font-pixel text-[10px] text-primary">HAULERS</h2>
             <p class="mt-1 font-mono text-[11px] text-base-content/50">
               More consumers. Warehouse memory should start falling within about
-              ten seconds - currently {@fleet.haulers} on duty against {@fleet.freighters} freighters.
+              ten seconds - currently {@fleet.haulers} on duty.
             </p>
             <div class="mt-3 grid gap-2 sm:grid-cols-3">
               <.ops_button
@@ -174,20 +168,6 @@ defmodule StationWeb.OpsLive do
                 hint={hauler_hint(factor)}
               />
             </div>
-          </div>
-        </section>
-
-        <section class="pixel-panel flex flex-col gap-3 p-4">
-          <h2 class="font-pixel text-[10px] text-secondary">BACKGROUND TRAFFIC</h2>
-          <div class="grid gap-2 sm:grid-cols-3">
-            <.ops_button
-              :for={{level, config} <- Enum.sort_by(TrafficControl.levels(), &elem(&1, 1).freighters)}
-              active={@settings.traffic == level}
-              event="traffic"
-              values={%{"level" => to_string(level)}}
-              label={level |> to_string() |> String.upcase() |> String.replace("_", " ")}
-              hint={"#{config.freighters} freighters"}
-            />
           </div>
         </section>
 

@@ -43,23 +43,6 @@ defmodule Mix.Tasks.Station.Calibrate do
         {type, ms}
       end
 
-    lookup = Map.new(costs)
-    average = Enum.reduce(Cargo.weighted_types(), 0.0, fn {t, w}, acc -> acc + w * lookup[t] end)
-
-    IO.puts(
-      "\n  offered load at each traffic level (background cargo mix, #{Float.round(average, 2)} ms avg)\n"
-    )
-
-    for {level, %{freighters: count, interval_ms: interval}} <- Station.TrafficControl.levels() do
-      # send_after jitters between interval and 2 * interval, so 1.5x on average.
-      per_second = count / (interval * 1.5 / 1000)
-      load = per_second * average / 1000 * 100
-
-      IO.puts(
-        "  #{pad(to_string(level), 12)}  #{pad(Float.round(per_second, 1) |> to_string() |> Kernel.<>("/s"), 10)}  #{Float.round(load, 1)}% of one warehouse"
-      )
-    end
-
     # A ship ships at ramp speed, and the crowd divides the inspection cost, so
     # the offered load per clerk is the same for one racing visitor or thirty.
     rate = 1000 / Application.fetch_env!(:station, :ship_load_ms)
