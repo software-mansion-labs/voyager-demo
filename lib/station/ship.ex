@@ -4,27 +4,30 @@ defmodule Station.Ship do
 
   The whole trick of the demo is that there is nothing behind this. A ship is a
   GenServer holding a hold full of containers in its state. Pressing TRANSFER
-  sends exactly one message to `Station.Warehouse` and removes exactly one
-  container from here - which is why the ship's memory falls and the
-  warehouse's rises, live, in Voyager.
+  casts one message to this process; loading a container onto the ramp takes a
+  moment (`:ship_load_ms`), and only then does exactly one message go to
+  `Station.Warehouse`.
 
-  Two limits sit in this process rather than in the browser, because a cookie
-  clicker on a public URL invites autoclickers: a token bucket per ship, and a
-  harder ceiling while the warehouse is congested. The second one is what makes
-  the phone feel the backpressure in the thumb.
+  The cast is the point. A thumb faster than the loading ramp piles messages up
+  in *this ship's* mailbox, so the visitor's own process grows a queue they can
+  find in Voyager - the same lesson as the warehouse, one level closer to home.
+  It is also the rate limit: a ship ships at ramp speed no matter how fast
+  anyone taps, and the cockpit refuses new presses once the mailbox is deep.
+
+  Nothing reads this process with a call. A GenServer sleeping on its ramp would
+  make every caller queue behind the cargo, so the ship publishes its state to
+  an ETS table after every event and `status/1` reads that - plus the queue and
+  memory, which `Process.info/2` reads from outside for free.
   """
 
   use GenServer, restart: :temporary
 
   alias Station.Cargo
+  alias Station.DockingBay
   alias Station.Events
   alias Station.Metrics
   alias Station.ShipNames
   alias Station.Warehouse
-
-  @type transfer_result ::
-          {:ok, %{hold: non_neg_integer(), delivered: non_neg_integer(), refilled?: boolean()}}
-          | {:throttled, non_neg_integer()}
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -32,12 +35,49 @@ defmodule Station.Ship do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  @doc "One click. One container. One message."
-  @spec transfer(atom()) :: transfer_result() | {:error, :gone}
-  def transfer(name), do: safe_call(name, :transfer)
+  @doc "One press. One message into this ship's own mailbox."
+  @spec transfer(atom()) :: :ok | {:error, :gone}
+  def transfer(name), do: press(name, :transfer)
 
+  @doc "Takes on a fresh hold. A decision, not an automatism - see handle_cast."
+  @spec resupply(atom()) :: :ok | {:error, :gone}
+  def resupply(name), do: press(name, :resupply)
+
+  defp press(name, message) do
+    case Process.whereis(name) do
+      nil -> {:error, :gone}
+      pid -> GenServer.cast(pid, message)
+    end
+  end
+
+  @doc "How deep this ship's own mailbox is. Read from outside, never asked."
+  @spec queue_len(atom()) :: non_neg_integer()
+  def queue_len(name) do
+    with pid when is_pid(pid) <- Process.whereis(name),
+         {:message_queue_len, queue} <- Process.info(pid, :message_queue_len) do
+      queue
+    else
+      _ -> 0
+    end
+  end
+
+  @doc "The published snapshot plus the live queue and memory. No messages sent."
   @spec status(atom()) :: map() | {:error, :gone}
-  def status(name), do: safe_call(name, :status)
+  def status(name) do
+    with pid when is_pid(pid) <- Process.whereis(name),
+         [{^name, snapshot}] <- :ets.lookup(DockingBay.status_table(), name),
+         info when is_list(info) <- Process.info(pid, [:message_queue_len, :memory]) do
+      snapshot
+      |> Map.put(:queue, info[:message_queue_len])
+      |> Map.put(:memory, info[:memory])
+    else
+      _ -> {:error, :gone}
+    end
+  end
+
+  @doc "The PubSub topic a ship announces each departed container on."
+  @spec topic(String.t()) :: String.t()
+  def topic(slug), do: "ship:" <> slug
 
   @spec undock(atom()) :: :ok
   def undock(name) do
@@ -53,46 +93,73 @@ defmodule Station.Ship do
 
     name = Keyword.fetch!(opts, :name)
     cargo_type = Keyword.fetch!(opts, :cargo_type)
-    slug = ShipNames.to_slug(name)
 
     state = %{
       name: name,
-      slug: slug,
+      slug: ShipNames.to_slug(name),
       cargo_type: cargo_type,
       hold: Cargo.build_hold(cargo_type),
       hold_count: Cargo.hold_size(),
       hold_size: Cargo.hold_size(),
       delivered: 0,
-      tokens: max_rate(),
-      last_refill: now_ms(),
+      refills: 0,
       last_press: now_ms(),
       docked_at: System.system_time(:second)
     }
 
     Metrics.add(:ships_docked, 1)
     Events.emit(:dock, "#{name} DOCKED - #{String.upcase(cargo_type)}")
+    publish(state)
 
     {:ok, state, ttl()}
   end
 
   @impl true
-  def handle_call(:transfer, _from, state) do
-    # A throttled press still counts as a thumb on the button, so it keeps the
-    # ship alive the same way a successful one does.
-    state = %{state | last_press: now_ms()}
-
-    case take_token(state) do
-      {:deny, retry_in, state} ->
-        Metrics.add(:throttled, 1)
-        {:reply, {:throttled, retry_in}, state, remaining(state)}
-
-      {:allow, state} ->
-        {reply, state} = ship_one(state)
-        {:reply, reply, state, remaining(state)}
-    end
+  def handle_cast(:transfer, %{hold: []} = state) do
+    # Presses queued behind the last container die quietly at the ramp: the
+    # hold does not refill itself. An empty ship is a decision waiting for the
+    # visitor - the button on the phone turns into TAKE ON CARGO.
+    {:noreply, %{state | last_press: now_ms()}, remaining(state)}
   end
 
-  def handle_call(:status, _from, state), do: {:reply, snapshot(state), state, remaining(state)}
+  def handle_cast(:transfer, state) do
+    state = %{state | last_press: now_ms()}
+
+    # The ramp. This sleep is what turns a fast thumb into a visible queue on
+    # this process - and it costs no scheduler anything, unlike real work here
+    # would with twenty five ships aboard.
+    load_ms() > 0 && Process.sleep(load_ms())
+
+    state = ship_one(state)
+    {:noreply, state, remaining(state)}
+  end
+
+  def handle_cast(:resupply, %{hold: []} = state) do
+    state = %{state | last_press: now_ms()}
+
+    load_ms() > 0 && Process.sleep(load_ms())
+
+    Events.emit(
+      :refill,
+      "#{state.name} TOOK ON A FRESH LOAD OF #{String.upcase(state.cargo_type)}"
+    )
+
+    state = %{
+      state
+      | hold: Cargo.build_hold(state.cargo_type),
+        hold_count: state.hold_size,
+        refills: state.refills + 1
+    }
+
+    publish(state)
+    broadcast(state, true)
+    {:noreply, state, remaining(state)}
+  end
+
+  # Resupply with cargo still aboard is a stale press from a laggy phone.
+  def handle_cast(:resupply, state) do
+    {:noreply, %{state | last_press: now_ms()}, remaining(state)}
+  end
 
   @impl true
   def handle_info(:timeout, state) do
@@ -104,6 +171,7 @@ defmodule Station.Ship do
 
   @impl true
   def terminate(_reason, state) do
+    :ets.delete(DockingBay.status_table(), state.name)
     Metrics.add(:ships_undocked, 1)
     Events.emit(:undock, "#{state.name} UNDOCKED - #{state.delivered} CONTAINERS DELIVERED")
     :ok
@@ -119,79 +187,46 @@ defmodule Station.Ship do
         delivered: state.delivered + 1
     }
 
-    {refilled?, state} = refill_if_empty(state)
-
-    {{:ok, %{hold: state.hold_count, delivered: state.delivered, refilled?: refilled?}}, state}
+    publish(state)
+    broadcast(state, false)
+    state
   end
 
-  defp refill_if_empty(%{hold: []} = state) do
-    Events.emit(
-      :refill,
-      "#{state.name} TOOK ON A FRESH LOAD OF #{String.upcase(state.cargo_type)}"
+  # The cockpit animates on this, not on the press: a crate flies when the
+  # container actually leaves the ship, which is after the ramp - so a backed
+  # up ship visibly works through its mailbox one flight at a time.
+  defp broadcast(state, refilled?) do
+    Phoenix.PubSub.broadcast(
+      Station.PubSub,
+      topic(state.slug),
+      {:shipped, %{hold: state.hold_count, delivered: state.delivered, refilled?: refilled?}}
     )
-
-    {true, %{state | hold: Cargo.build_hold(state.cargo_type), hold_count: state.hold_size}}
   end
 
-  defp refill_if_empty(state), do: {false, state}
-
-  # Token bucket, refilled continuously. The ceiling drops while the warehouse
-  # is backed up, so a congested station physically slows every thumb in the room.
-  defp take_token(state) do
-    now = now_ms()
-    rate = current_rate()
-    elapsed = now - state.last_refill
-
-    tokens = min(rate * 1.0, state.tokens + elapsed * rate / 1000)
-    state = %{state | tokens: tokens, last_refill: now}
-
-    if tokens >= 1.0 do
-      {:allow, %{state | tokens: tokens - 1.0}}
-    else
-      {:deny, ceil((1.0 - tokens) * 1000 / rate), state}
-    end
-  end
-
-  defp current_rate do
-    limits = Application.fetch_env!(:station, :transfer_limits)
-
-    if Metrics.get(:queue) >= limits[:congested_queue] do
-      limits[:congested_per_second]
-    else
-      limits[:per_second]
-    end
-  end
-
-  defp max_rate, do: Application.fetch_env!(:station, :transfer_limits)[:per_second] * 1.0
-
-  defp snapshot(state) do
-    %{
+  defp publish(state) do
+    snapshot = %{
       name: state.name,
       slug: state.slug,
       cargo_type: state.cargo_type,
       hold: state.hold_count,
       hold_size: state.hold_size,
       delivered: state.delivered,
+      refills: state.refills,
       pid: inspect(self()),
-      memory: Process.info(self(), :memory) |> elem(1),
       docked_at: state.docked_at
     }
-  end
 
-  defp safe_call(name, message) do
-    GenServer.call(name, message)
-  catch
-    :exit, _ -> {:error, :gone}
+    :ets.insert(DockingBay.status_table(), {state.name, snapshot})
   end
 
   # Idle means nobody is pressing the button, not that nobody is looking at the
-  # page. The cockpit polls this process once a second to redraw its counters,
-  # so measuring from the last message would keep a ship docked for as long as
-  # a tab is open somewhere - and at a booth with a queue behind it, an
-  # abandoned tab holding one of twenty five berths is the expensive case.
+  # page - and since status/1 stopped sending messages entirely, only presses
+  # and this timeout ever reach the mailbox's clock.
   defp remaining(state), do: max(ttl() - (now_ms() - state.last_press), 0)
 
   defp ttl, do: Application.fetch_env!(:station, :ship_ttl_ms)
+
+  defp load_ms, do: Application.fetch_env!(:station, :ship_load_ms)
 
   defp now_ms, do: System.monotonic_time(:millisecond)
 end

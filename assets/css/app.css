@@ -126,6 +126,13 @@
 
 body {
   font-family: var(--font-mono);
+  /* Fast tapping is this application's main verb, and on iOS a fast second tap
+     is double-tap zoom: the page lurches and the button leaves the thumb.
+     `manipulation` keeps pinch zoom and panning, drops only the double tap. */
+  touch-action: manipulation;
+  /* And with the cockpit locked to the viewport, the last movement left is the
+     rubber-band bounce on a page with nowhere to scroll. */
+  overscroll-behavior-y: none;
 }
 
 /* Sprite shading. Two derived tones so a sprite only ever needs one colour set
@@ -248,9 +255,11 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
+  /* --color-base-300 at 55%, as a literal: one less function for a browser to
+     trip over in a gradient. */
+  background-image: repeating-linear-gradient(
     180deg,
-    color-mix(in oklch, var(--color-base-300) 55%, transparent) 0 1px,
+    oklch(12% 0.02 264 / 55%) 0 1px,
     transparent 1px 3px
   );
   opacity: 0.35;
@@ -278,12 +287,19 @@ body {
    one relative box, so the whole scene scales to whatever screen it lands on.
    --------------------------------------------------------------------------- */
 
+/* The colour and the glow are separate rules on purpose: a browser that drops
+   one gradient then only loses the glow, never the floor under the scene. The
+   glow literal is `--color-primary` with an 8% alpha; the grey-television bug
+   itself was the star layers below, not this. */
 .scene {
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 45%, color-mix(in oklch, var(--color-primary) 8%, transparent), transparent 55%),
-    var(--color-base-300);
+  background-color: var(--color-base-300);
+  background-image: radial-gradient(
+    circle at 50% 45%,
+    oklch(80% 0.16 72 / 8%),
+    transparent 55%
+  );
 }
 
 /* Two star layers at different speeds. Cheap parallax, and it stops the scene
@@ -295,13 +311,19 @@ body {
   background-repeat: repeat;
 }
 
+/* The star colour is an sRGB literal, and that is load-bearing. Written as the
+   theme's oklch token - directly or through var() - Safari floods every tile
+   with the colour instead of drawing a one pixel dot, and two flooded layers
+   over the scene turn the whole television light grey. Bisected in Safari:
+   the same gradient with a hex colour draws dots, with an oklch colour it
+   floods, animation or no animation. This is --color-base-content in sRGB. */
 .scene-stars-far {
   background-image:
-    radial-gradient(1px 1px at 12% 22%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 47% 8%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 73% 61%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 31% 78%, var(--color-base-content) 100%, transparent),
-    radial-gradient(1px 1px at 88% 34%, var(--color-base-content) 100%, transparent);
+    radial-gradient(1px 1px at 12% 22%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 47% 8%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 73% 61%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 31% 78%, #e4eaf3 100%, transparent),
+    radial-gradient(1px 1px at 88% 34%, #e4eaf3 100%, transparent);
   background-size: 240px 180px;
   opacity: 0.28;
   animation: scene-drift 90s linear infinite;
@@ -309,9 +331,9 @@ body {
 
 .scene-stars-near {
   background-image:
-    radial-gradient(2px 2px at 20% 40%, var(--color-base-content) 100%, transparent),
-    radial-gradient(2px 2px at 66% 15%, var(--color-base-content) 100%, transparent),
-    radial-gradient(2px 2px at 84% 72%, var(--color-base-content) 100%, transparent);
+    radial-gradient(2px 2px at 20% 40%, #e4eaf3 100%, transparent),
+    radial-gradient(2px 2px at 66% 15%, #e4eaf3 100%, transparent),
+    radial-gradient(2px 2px at 84% 72%, #e4eaf3 100%, transparent);
   background-size: 400px 300px;
   opacity: 0.45;
   animation: scene-drift 45s linear infinite;

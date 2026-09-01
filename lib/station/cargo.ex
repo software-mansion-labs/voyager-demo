@@ -78,18 +78,37 @@ defmodule Station.Cargo do
 
   @doc """
   The inspection: serialise the container, hash it, then re-hash the digest
-  `inspection_rounds` times.
+  `effective_rounds/1` times.
 
-  The first hash scales with the container size, the rounds are a flat per-type
-  cost. Together they are the two knobs that decide whether a single click is
-  visible in the warehouse reductions.
+  The configured rounds are the cost for one lone visitor, and the crowd
+  divides them: with N ships docked each container costs a Nth. That keeps two
+  promises at once. One visitor saturates most of a clerk - their press is
+  visible work. And a room of visitors saturates the same clerk by the same
+  margin instead of by twenty five times, so the queue is a story about
+  congestion rather than a number that ran away, and the warehouse actually
+  absorbs the crowd's cargo - memory visibly fills in minutes, and drains when
+  the room quiets down. The per-type ratios survive the division: antimatter
+  stays twenty times an ice cube whoever is in the room.
   """
   @spec inspect_container(container()) :: binary()
   def inspect_container(%{type: type, payload: payload}) do
-    %{inspection_rounds: rounds} = preset(type)
+    rounds = effective_rounds(type)
 
     digest = :crypto.hash(:sha256, :erlang.term_to_binary(payload))
     Enum.reduce(1..rounds, digest, fn _, acc -> :crypto.hash(:sha256, acc) end)
+  end
+
+  @doc "What one container of this type costs right now, crowd included."
+  @spec effective_rounds(type()) :: pos_integer()
+  def effective_rounds(type) do
+    %{inspection_rounds: rounds} = preset(type)
+    max(div(rounds, crowd()), 1)
+  end
+
+  # Docked visitors, from the lock-free counters - this runs once per container
+  # inside the very process the demo congests, so it must never send a message.
+  defp crowd do
+    max(Station.Metrics.get(:ships_docked) - Station.Metrics.get(:ships_undocked), 1)
   end
 
   defp pick([{type, weight} | rest], roll) do

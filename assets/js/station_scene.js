@@ -63,6 +63,7 @@ export const StationScene = {
 
     this.ships = new Map();
     this.haulers = [];
+    this.pickupTurn = 0;
     this.inFlight = 0;
     this.crates = new Map();
     this.timers = new Set();
@@ -238,11 +239,15 @@ export const StationScene = {
   launchPickups(delta, haulers) {
     if (delta <= 0 || haulers === 0) return;
 
-    const count = Math.min(Math.ceil(delta / 8), 6);
+    const count = Math.min(Math.ceil(delta / 2), 6);
 
     for (let n = 0; n < count; n++) {
       this.after(n * 140, () => {
-        const target = this.haulers[n % this.haulers.length];
+        // The turn counter lives across ticks. Indexed from the loop variable,
+        // every tick started back at zero - and at one crate per tick, which is
+        // what the current pace mostly produces, the first hauler took every
+        // delivery while the other two hung there as scenery.
+        const target = this.haulers[this.pickupTurn++ % this.haulers.length];
         if (!target) return;
 
         this.flyCrate(

@@ -51,7 +51,8 @@ defmodule StationWeb.StationOpsLiveTest do
       assert %{"ships" => [%{"delta" => 0, "cargo" => "ore", "id" => "ship_nostromo"}]} =
                scene(html)
 
-      {:ok, _} = Station.Ship.transfer(name)
+      :ok = Station.Ship.transfer(name)
+      :sys.get_state(Process.whereis(name))
       send(view.pid, :refresh)
 
       assert %{"ships" => [%{"delta" => 1}]} = scene(render(view))
