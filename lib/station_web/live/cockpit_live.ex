@@ -15,6 +15,7 @@ defmodule StationWeb.CockpitLive do
   alias Station.DockingBay
   alias Station.Leaderboard
   alias Station.Ship
+  alias Station.ShipNames
   alias Station.Warehouse
   alias StationWeb.DockController
 
@@ -30,7 +31,10 @@ defmodule StationWeb.CockpitLive do
         |> ok()
 
       ship ->
-        if connected?(socket), do: :timer.send_interval(@refresh, :refresh)
+        if connected?(socket) do
+          :timer.send_interval(@refresh, :refresh)
+          Phoenix.PubSub.subscribe(Station.PubSub, Ship.topic(ShipNames.to_slug(ship)))
+        end
 
         socket
         |> assign(:page_title, "#{ship} · STATION VOY-1")
@@ -58,11 +62,12 @@ defmodule StationWeb.CockpitLive do
         |> noreply()
 
       true ->
+        # No animation here: the crate flies on the ship's own {:shipped}
+        # broadcast, once the container has really left the ramp.
         case Ship.transfer(ship) do
           :ok ->
             socket
             |> assign(:flash_note, nil)
-            |> push_event("station:transferred", %{refilled: false})
             |> noreply()
 
           {:error, :gone} ->
@@ -77,6 +82,15 @@ defmodule StationWeb.CockpitLive do
   @impl true
   def handle_info(:refresh, socket), do: {:noreply, refresh(socket)}
 
+  def handle_info({:shipped, shipped}, socket) do
+    socket
+    |> assign(:hold, shipped.hold)
+    |> assign(:delivered, shipped.delivered)
+    |> assign(:flash_note, if(shipped.refilled?, do: :refilled, else: socket.assigns.flash_note))
+    |> push_event("station:transferred", %{refilled: shipped.refilled?})
+    |> noreply()
+  end
+
   defp refresh(socket) do
     ship = socket.assigns.ship
 
@@ -88,27 +102,16 @@ defmodule StationWeb.CockpitLive do
 
       status ->
         stats = Warehouse.stats()
-        refilled? = status.refills > Map.get(socket.assigns, :refills, status.refills)
 
         socket
         |> assign(:status, status)
         |> assign(:hold, status.hold)
         |> assign(:delivered, status.delivered)
-        |> assign(:refills, status.refills)
         |> assign(:stats, stats)
         |> assign(:congested?, stats.queue >= congestion_threshold())
         |> assign(:rank, Leaderboard.rank(status.slug))
         |> assign(:fleet_size, DockingBay.count())
         |> assign(:atoms, DockingBay.atom_budget())
-        |> then(fn socket ->
-          if refilled? do
-            socket
-            |> assign(:flash_note, :refilled)
-            |> push_event("station:transferred", %{refilled: true})
-          else
-            socket
-          end
-        end)
     end
   end
 

@@ -28,6 +28,11 @@ defmodule StationWeb.CockpitLiveTest do
 
     render_click(view, "transfer")
 
+    # The crate flies when the container leaves the ramp, not when the button
+    # is pressed - the ship broadcasts each departure and the view follows.
+    :sys.get_state(Process.whereis(name))
+    assert_push_event(view, "station:transferred", %{refilled: false})
+
     # The press is a cast and the grid follows the poll, so let the ship work
     # and tick the poll by hand rather than sleeping through a refresh cycle.
     :sys.get_state(Process.whereis(name))

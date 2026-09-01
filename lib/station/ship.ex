@@ -69,6 +69,10 @@ defmodule Station.Ship do
     end
   end
 
+  @doc "The PubSub topic a ship announces each departed container on."
+  @spec topic(String.t()) :: String.t()
+  def topic(slug), do: "ship:" <> slug
+
   @spec undock(atom()) :: :ok
   def undock(name) do
     case Process.whereis(name) do
@@ -143,8 +147,20 @@ defmodule Station.Ship do
         delivered: state.delivered + 1
     }
 
+    refills = state.refills
     state = refill_if_empty(state)
     publish(state)
+
+    # The cockpit animates on this, not on the press: a crate flies when the
+    # container actually leaves the ship, which is after the ramp - so a backed
+    # up ship visibly works through its mailbox one flight at a time.
+    Phoenix.PubSub.broadcast(
+      Station.PubSub,
+      topic(state.slug),
+      {:shipped,
+       %{hold: state.hold_count, delivered: state.delivered, refilled?: state.refills > refills}}
+    )
+
     state
   end
 
