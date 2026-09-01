@@ -109,7 +109,7 @@ defmodule StationWeb.CockpitLive do
             and the button never leaves the reachable half of the screen. The
             hold grid is the one flexible element - it absorbs whatever height
             this particular phone has to give. --%>
-      <div class="mx-auto flex h-dvh w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
+      <div class="mx-auto flex h-dvh w-full max-w-md flex-col gap-2 overflow-y-auto overscroll-contain px-4 py-3">
         <header class={[
           "pixel-panel flex items-center gap-3 p-3",
           if(@congested?, do: "border-error/70", else: "pixel-panel-accent")
@@ -227,10 +227,9 @@ defmodule StationWeb.CockpitLive do
               absorbs a short viewport - its bars just draw thinner. --%>
         <section class="pixel-panel flex shrink-0 flex-col gap-2 p-3">
           <p class="font-pixel text-[9px] text-base-content/50">WHAT JUST HAPPENED</p>
-          <p class="font-mono text-xs leading-relaxed text-base-content/60">
-            One message from <span class="text-secondary">{@status.name}</span>
-            to <span class="text-primary">Station.Warehouse</span>, one container out of this
-            ship's state. Look at the laptop: your memory is falling, the warehouse's is rising.
+          <p class="font-mono text-[11px] leading-snug text-base-content/60">
+            Every press is a real message to <span class="text-primary">Station.Warehouse</span>. Look at the laptop: this ship's
+            memory is falling, the warehouse's is rising.
           </p>
         </section>
 
