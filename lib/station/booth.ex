@@ -15,7 +15,19 @@ defmodule Station.Booth do
   @doc "The URL behind the QR code on the television."
   @spec dock_url() :: String.t()
   def dock_url do
-    System.get_env("STATION_DOCK_URL") || from_interfaces() || StationWeb.Endpoint.url()
+    System.get_env("STATION_DOCK_URL") || served_address() || StationWeb.Endpoint.url()
+  end
+
+  # Only worth advertising the address of an interface the station is actually
+  # listening on. Bound to loopback - which is every laptop that is not the
+  # booth - the machine's wifi address is a QR code that leads nowhere.
+  defp served_address do
+    case StationWeb.Endpoint.config(:http)[:ip] do
+      {127, _, _, _} -> nil
+      {0, 0, 0, 0, 0, 0, 0, 1} -> nil
+      nil -> nil
+      _ -> from_interfaces()
+    end
   end
 
   defp from_interfaces do
