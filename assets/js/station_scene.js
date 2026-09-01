@@ -16,10 +16,27 @@
 const LEFT_PORT = { x: 28, y: 50 };
 const RIGHT_PORT = { x: 72, y: 50 };
 
-const SHIP_COLUMNS = [12, 22];
+// Inner column first: the scene is a ranking, so the ship that has moved the
+// most cargo docks nearest the station and the rest queue up behind it.
+const SHIP_COLUMNS = [23, 14, 5];
 const HAULER_COLUMNS = [88, 78];
 const BERTH_SPACING = 14;
 const BERTH_SPREAD = 76;
+
+// A column takes ten before the next one opens. Past that the rows are closer
+// together than a ship is tall, and the names start landing on each other.
+const PER_COLUMN = 10;
+
+// A ship is drawn smaller and dimmer the further down the board it is, down to
+// a floor: rank twenty is still a legible ship, just plainly not the one to
+// look at.
+const SHIP_WIDTH = 5.5;
+const SHIP_WIDTH_FLOOR = 3.4;
+const SHIP_FADE_FLOOR = 0.45;
+const RANKS_TO_FLOOR = 12;
+
+// Roughly what a name costs under a ship: font, padding and the gap above it.
+const LABEL_HEIGHT = 15;
 
 const MAX_CRATES_IN_FLIGHT = 90;
 const MAX_CRATES_PER_SHIP_PER_TICK = 5;
@@ -105,6 +122,7 @@ export const StationScene = {
         known.el.dataset.lane = berth.lane;
       }
 
+      this.rank(known.el, index, berth.spacing);
       known.cargo = ship.cargo;
     });
 
@@ -123,7 +141,6 @@ export const StationScene = {
     el.className = `scene-actor scene-ship-arriving ${CARGO_COLOR[ship.cargo] || ""}`;
     el.style.left = `${berth.x}%`;
     el.style.top = `${berth.y}%`;
-    el.style.width = "5.5%";
     el.dataset.lane = berth.lane;
 
     // The name is the whole reason a visitor is looking at this screen, so it
@@ -142,6 +159,34 @@ export const StationScene = {
     this.after(1400, () => el.classList.remove("scene-ship-arriving"));
 
     return el;
+  },
+
+  // Where a ship sits on the board, drawn rather than written down: the leader
+  // is full size at full brightness, and each rank behind it loses a little of
+  // both until the floor.
+  rank(el, index, spacing) {
+    const fade = Math.min(index, RANKS_TO_FLOOR) / RANKS_TO_FLOOR;
+    const hull = el.querySelector("svg");
+
+    el.style.width = `${Math.min(SHIP_WIDTH - (SHIP_WIDTH - SHIP_WIDTH_FLOOR) * fade, this.fits(spacing))}%`;
+
+    // The hull dims with rank, the name never does. A visitor is here to find
+    // their own ship, and the twenty ninth ship on the board is the one whose
+    // owner is squinting hardest.
+    if (hull) hull.style.opacity = `${1 - (1 - SHIP_FADE_FLOOR) * fade}`;
+  },
+
+  // A sprite is square, so a berth row thirty pixels below the last one cannot
+  // hold a forty pixel ship and its name: past a certain crowd the whole column
+  // has to shrink, or every ship paints over the name of the one above it. Widths
+  // here are a percentage of the scene's width and the row pitch is of its
+  // height, hence the conversion.
+  fits(spacing) {
+    const box = this.el.getBoundingClientRect();
+
+    if (!spacing || !box.width) return SHIP_WIDTH;
+
+    return ((spacing * box.height) / 100 - LABEL_HEIGHT) / box.width * 100;
   },
 
   // --- haulers -----------------------------------------------------------
@@ -331,17 +376,22 @@ export const StationScene = {
   // the edges: three haulers pinned to the top and bottom corners read as a
   // layout bug, not as a crew.
   berth(columns, index, total) {
-    const perColumn = Math.ceil(Math.max(total, 1) / columns.length);
+    const lanes = Math.min(Math.ceil(Math.max(total, 1) / PER_COLUMN), columns.length);
+    const perColumn = Math.ceil(Math.max(total, 1) / lanes);
     const column = Math.floor(index / perColumn);
     const row = index % perColumn;
     const spacing = perColumn > 1 ? Math.min(BERTH_SPACING, BERTH_SPREAD / (perColumn - 1)) : 0;
 
-    const lane = Math.min(column, columns.length - 1);
+    const lane = Math.min(column, lanes - 1);
 
+    // The second column sits half a row lower than the first, so a long name in
+    // one column falls into the gap between two ships of the other instead of
+    // across a neighbour's label.
     return {
       lane,
+      spacing,
       x: columns[lane],
-      y: 50 + (row - (perColumn - 1) / 2) * spacing,
+      y: 50 + (row - (perColumn - 1) / 2) * spacing + (lane % 2) * spacing * 0.5,
     };
   },
 
