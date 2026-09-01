@@ -29,6 +29,18 @@ defmodule StationWeb.StationOpsLiveTest do
     assert Station.Leaderboard.size() == 1
   end
 
+  test "the television carries the way in, as a code and as a line to type", %{conn: conn} do
+    {:ok, _view, html} = live(conn, ~p"/tv")
+
+    assert html =~ "SCAN TO"
+
+    # The line under the code is wherever the station can actually be reached,
+    # minus the scheme nobody types and every phone adds back on its own.
+    url = Station.Booth.dock_url()
+    assert html =~ String.replace_prefix(url, "http://", "")
+    refute html =~ url
+  end
+
   describe "the scene payload" do
     test "opens with nothing in the air, then animates only real deliveries", %{conn: conn} do
       {:ok, name} = Station.DockingBay.dock("Nostromo", "ore")

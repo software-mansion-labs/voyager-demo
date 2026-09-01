@@ -38,3 +38,9 @@ npm-debug.log
 
 # Leaderboard snapshots
 /priv/leaderboard*.ets
+
+# phx.digest writes hashed copies and gzipped twins next to the originals, and
+# only /priv/static/assets is ignored above. Building a release should not leave
+# the working tree dirty.
+/priv/static/**/*-????????????????????????????????.*
+/priv/static/**/*.gz
