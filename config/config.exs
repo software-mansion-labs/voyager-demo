@@ -24,40 +24,51 @@ config :station,
   hold_size: 120,
   # Server side, because a cookie clicker on a public URL invites autoclickers.
   # The congested ceiling is what makes a backed up station feel heavy in the thumb.
-  transfer_limits: [per_second: 10, congested_per_second: 3, congested_queue: 250],
+  # Two presses a second, one while the station is backed up. A container costs
+  # half a second to clear, so ten a second was a rate no station could ever
+  # serve: the queue only ever grew. At two, a couple of visitors are enough to
+  # bury one clerk - which is the demo - and the inspection crew can still drain
+  # what a booth's worth of thumbs produces.
+  transfer_limits: [per_second: 2, congested_per_second: 1, congested_queue: 100],
 
   # --- cargo -----------------------------------------------------------------
   # `chunks` are 32 byte pieces, so they decide how fast warehouse memory grows.
-  # `inspection_rounds` decide how expensive a single click is in reductions.
+  # `inspection_rounds` decide how long a single container takes to clear.
   # These two are knobs one and two of the four in the concept.
   #
-  # The defaults land near 0.5 / 3 / 3 / 25 ms per container on an Apple M-class
-  # laptop. They are the numbers most likely to need retuning on the actual box
-  # on the first morning: `mix station.calibrate` prints the measured costs and
-  # what the warehouse can absorb before its queue starts climbing.
+  # The rounds below aim at 20 / 500 / 500 / 1000 ms per container, so a press is
+  # a visible piece of work rather than a blur: one antimatter container holds an
+  # inspector for a whole second. Measured at 6060 rounds per millisecond on an
+  # M-class laptop, which is where those numbers come from.
+  #
+  # Every number under here is downstream of those four: one clerk clears about
+  # three containers a second, and the fleet, the click rate and the haulers are
+  # all set against that ceiling. Re-measure before changing any of them -
+  # `mix station.calibrate` prints the real cost per cargo type on the box that
+  # will run the booth, and the offered load at each traffic level.
   cargo_types: %{
     "ice" => %{
       label: "ICE",
       chunks: 16,
-      inspection_rounds: 3_000,
+      inspection_rounds: 120_000,
       blurb: "Light, cheap, endless."
     },
     "ore" => %{
       label: "ORE",
       chunks: 128,
-      inspection_rounds: 18_000,
+      inspection_rounds: 3_000_000,
       blurb: "The balanced default."
     },
     "machinery" => %{
       label: "MACHINERY",
       chunks: 1_024,
-      inspection_rounds: 18_000,
+      inspection_rounds: 3_000_000,
       blurb: "Bulky. Fills the warehouse fastest."
     },
     "antimatter" => %{
       label: "ANTIMATTER",
       chunks: 16,
-      inspection_rounds: 150_000,
+      inspection_rounds: 6_000_000,
       blurb: "Tiny, and a nightmare to inspect."
     }
   },
@@ -72,23 +83,33 @@ config :station,
   # Knobs three and four: the sea level the human waves are visible against,
   # and the producer/consumer ratio that makes warehouse memory creep upward.
   traffic: :normal,
+  # Many freighters, each of them slow. The count is what the tree shows and the
+  # interval is what the warehouse feels, so they are tuned separately: twenty
+  # children under FreighterLine, together offering about 1.7 containers a
+  # second - a little over half of what one clerk can clear. The station hums
+  # with nobody in the room and the queue still sits at zero, which is what
+  # makes the queue climbing mean something when a crowd arrives.
   traffic_levels: %{
-    quiet: %{freighters: 8, interval_ms: 500},
-    normal: %{freighters: 20, interval_ms: 200},
-    rush_hour: %{freighters: 48, interval_ms: 120}
+    quiet: %{freighters: 10, interval_ms: 12_000},
+    normal: %{freighters: 20, interval_ms: 8_000},
+    rush_hour: %{freighters: 40, interval_ms: 3_000}
   },
   # Antimatter is mostly a visitor's choice. If the background fleet carried it
   # in equal measure the sea level would be antimatter and the punchline about
   # one visitor's cargo costing twenty times another's would drown in it.
   freighter_cargo_weights: [ice: 40, ore: 35, machinery: 20, antimatter: 5],
-  freighter_runs: 60,
+  # A short trip, so freighters are visibly born and visibly die in the tree
+  # rather than sitting there for eight minutes.
+  freighter_runs: 15,
   haulers: 3,
   # Multipliers for `Dispatch extra haulers`. They have to be big: the point of
   # that button is that the memory trend turns around while somebody watches it,
   # and a small boost only slows the climb down.
   hauler_boosts: [1, 4, 8],
-  hauler_interval_ms: 400,
-  hauler_batch: 6,
+  # Deliberately just under what the fleet delivers, so an idle station creeps
+  # upward instead of sitting flat, and a boost visibly turns the line around.
+  hauler_interval_ms: 2_500,
+  hauler_batch: 2,
 
   # --- safety ----------------------------------------------------------------
   watchdog: [max_queue: 5_000, max_run_queue: 200],

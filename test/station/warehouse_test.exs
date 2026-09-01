@@ -56,6 +56,28 @@ defmodule Station.WarehouseTest do
     assert Metrics.get(:inspected) == 5
   end
 
+  test "the crew switch reaches cargo that is already in the warehouse queue" do
+    # The switch used to arrive as a message, so it queued behind the backlog it
+    # was pressed to fix. At half a second a container that is a minute of ops
+    # pressing a button and nothing happening.
+    :sys.suspend(Warehouse)
+    for container <- Cargo.build_hold("ore", 4), do: Warehouse.accept("nostromo", container)
+
+    OpsPanel.set_warehouse_mode(:inspection_crew)
+    crew = Station.InspectionCrew.workers()
+    Enum.each(crew, &:sys.suspend/1)
+
+    :sys.resume(Warehouse)
+    settle()
+
+    # Nothing stored yet: all four went to a crew that is holding them, which is
+    # only possible if the mailbox the switch never entered was read anyway.
+    assert Metrics.get(:stored) == 0
+
+    Enum.each(crew, &:sys.resume/1)
+    assert eventually(fn -> Metrics.get(:stored) == 4 end)
+  end
+
   test "stats never send the warehouse a message" do
     stats = Warehouse.stats()
     assert stats.alive?
