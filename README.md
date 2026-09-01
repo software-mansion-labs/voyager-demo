@@ -124,7 +124,27 @@ talks to the station over whatever network it already has. Conference wifi
 falling over does not take the demo with it — it takes the laptop's SSH tunnel,
 which is what the tethering backup is for.
 
-Three files in `deploy/` are the whole setup:
+On the box, the whole thing is two containers and one file of secrets:
+
+```bash
+cp deploy/station.env.example deploy/station.env    # fill it in, chmod 600
+docker compose up -d
+```
+
+That is the station and Caddy, with TLS, a restart policy, and the leaderboard
+on a volume that survives a redeploy. The image comes from `ghcr.io`, built by
+CI on every push to `main` — a conference network is a bad place to find out
+that a dependency wants a C compiler. `docker compose up -d --build` builds it
+on the box instead.
+
+Compose runs both containers on the **host network**, and that is not laziness
+about port mapping: the laptop half of this demo is Voyager attaching to the
+BEAM node through an SSH tunnel with a proxied EPMD. EPMD is a host-level
+directory, so on a bridge network the node registers an address the tunnel
+cannot reach — the one thing the booth exists to demonstrate would be the one
+thing that breaks. Linux only, which the booth box is.
+
+Without Docker, the same setup by hand from three files in `deploy/`:
 
 | file | goes to |
 | --- | --- |
@@ -136,7 +156,7 @@ Three files in `deploy/` are the whole setup:
 it short: the QR code carries it, but somebody on 5G at the back of the aisle is
 going to type it with one thumb.
 
-**2. Build and ship.**
+**2. Build and ship**, if you are running the release rather than the image.
 
 ```bash
 MIX_ENV=prod mix station.release
@@ -195,6 +215,10 @@ Other deployment notes, in the order they will bite:
   machine sits idle is exactly what the run queues should show.
 - **Treat the credentials as burned.** A single-use VPS, a dedicated cookie, a
   dedicated SSH key, all rotated afterwards. Visitors touch the laptop.
+- **Calibrate on the box, not on a laptop.** Under Docker that is
+  `docker compose exec station /app/bin/station eval "Mix.Tasks.Station.Calibrate.run([])"`.
+  It prints what a container really costs there, and every other number in
+  `config/config.exs` is set against that one ceiling.
 - **Print the QR code too.** The one on the television recruits the queue and
   the aisle; a card on the desk serves the person already standing there. Both
   carry the same URL, so a phone that cannot see the screen still gets in.

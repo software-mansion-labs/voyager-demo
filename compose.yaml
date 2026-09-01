@@ -1,0 +1,40 @@
+# The booth box, in one command:
+#
+#   cp deploy/station.env.example deploy/station.env   # fill it in
+#   docker compose up -d
+#
+# Host networking on purpose, and it is not laziness about port mapping. The
+# whole laptop half of this demo is Voyager attaching to the BEAM node through
+# an SSH tunnel with a proxied EPMD. EPMD is a host-level directory: inside a
+# bridge network the node would register an address the tunnel cannot reach, and
+# the one thing this booth is meant to demonstrate would be the one thing that
+# does not work. On the host network the node registers on the same loopback the
+# tunnel lands on, exactly as it does without Docker.
+#
+# Linux only, which the booth box is. On a Mac, run it without Docker.
+services:
+  station:
+    image: ghcr.io/software-mansion-labs/voyager-demo:main
+    build: .
+    network_mode: host
+    env_file: deploy/station.env
+    volumes:
+      - station-data:/var/lib/station
+    restart: unless-stopped
+
+  # TLS and the public port. Caddy fetches and renews the certificate itself, so
+  # no key ever lands on the box by hand.
+  caddy:
+    image: caddy:2-alpine
+    network_mode: host
+    env_file: deploy/station.env
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  station-data:
+  caddy-data:
+  caddy-config:
