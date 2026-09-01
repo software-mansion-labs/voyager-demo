@@ -80,6 +80,10 @@ defmodule Station.MixProject do
       # this ships a manifest-less endpoint and every static asset 404s.
       "station.release": ["assets.deploy", "release --overwrite"],
       "assets.deploy": [
+        # Compile first: the colocated hooks esbuild imports are written by the
+        # Phoenix compiler into the build directory, so a clean prod build
+        # without this fails on "Could not resolve phoenix-colocated/station".
+        "compile",
         "tailwind station --minify",
         "esbuild station --minify",
         "phx.digest"
