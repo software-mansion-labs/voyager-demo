@@ -104,7 +104,12 @@ defmodule StationWeb.CockpitLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-5">
+      <%!-- Locked to the viewport: the cockpit is a controller, not a page.
+            There is nothing to scroll, so a fast thumb has nothing to drag,
+            and the button never leaves the reachable half of the screen. The
+            hold grid is the one flexible element - it absorbs whatever height
+            this particular phone has to give. --%>
+      <div class="mx-auto flex h-dvh w-full max-w-md flex-col gap-3 overflow-hidden px-4 py-3">
         <header class={[
           "pixel-panel flex items-center gap-3 p-3",
           if(@congested?, do: "border-error/70", else: "pixel-panel-accent")
@@ -128,7 +133,7 @@ defmodule StationWeb.CockpitLive do
               anything to say. It appears exactly when a thumb is going fastest,
               and a band of pixels arriving above the button moves the button
               out from under that thumb mid press. --%>
-        <div class="h-11 shrink-0">
+        <div class="h-9 shrink-0">
           <div
             :if={@congested?}
             class="pixel-panel flex h-full items-center border-error/70 bg-error/10 px-3 font-pixel text-[10px] text-error animate-blink"
@@ -145,7 +150,7 @@ defmodule StationWeb.CockpitLive do
           id="cockpit-flight"
           phx-hook=".Flight"
           phx-update="ignore"
-          class="scene pixel-panel relative h-24"
+          class="scene pixel-panel relative h-16 shrink-0"
         >
           <div class="scene-stars scene-stars-far"></div>
 
@@ -168,7 +173,7 @@ defmodule StationWeb.CockpitLive do
           <div data-flight-lane class="absolute inset-0"></div>
         </section>
 
-        <section class="pixel-panel p-3">
+        <section class="pixel-panel flex min-h-36 flex-1 flex-col p-3">
           <div class="flex items-baseline justify-between">
             <span class="font-pixel text-[9px] text-base-content/50">HOLD</span>
             <span class="font-mono text-[11px] text-base-content/45">
@@ -181,12 +186,12 @@ defmodule StationWeb.CockpitLive do
             phx-hook=".Hold"
             phx-update="ignore"
             data-hold={@hold}
-            class="mt-3 grid grid-cols-10 gap-[3px]"
+            class="mt-3 grid min-h-0 flex-1 auto-rows-fr grid-cols-10 gap-[3px]"
           >
             <span
               :for={index <- 1..@hold_size}
               data-index={index}
-              class={["h-4 w-full transition-none", Sprites.cargo_color(@status.cargo_type)]}
+              class={["w-full transition-none", Sprites.cargo_color(@status.cargo_type)]}
             />
           </div>
         </section>
@@ -195,7 +200,7 @@ defmodule StationWeb.CockpitLive do
           type="button"
           id="transfer-button"
           phx-click="transfer"
-          class="pixel-button bg-primary py-8 font-pixel text-base text-primary-content"
+          class="pixel-button shrink-0 bg-primary py-5 font-pixel text-base text-primary-content"
         >
           TRANSFER CARGO
         </button>
@@ -217,22 +222,19 @@ defmodule StationWeb.CockpitLive do
           <.readout label="WH MEMORY" value={format_bytes(@stats.memory)} tone="text-primary" />
         </section>
 
-        <section class="pixel-panel flex flex-col gap-2 p-3">
+        <%!-- Clipped rather than scrolled when a short phone runs out of room:
+              an inner scroll region would give the thumb the drag surface the
+              fixed viewport just took away. --%>
+        <section class="pixel-panel flex min-h-0 shrink flex-col gap-2 overflow-hidden p-3">
           <p class="font-pixel text-[9px] text-base-content/50">WHAT JUST HAPPENED</p>
           <p class="font-mono text-xs leading-relaxed text-base-content/60">
-            Each press sends exactly one message from
-            <span class="text-secondary">{@status.name}</span>
-            to <span class="text-primary">Station.Warehouse</span>, and removes exactly one container
-            from this ship's process state. The warehouse checksums it before it accepts it. Look at
-            the laptop: your memory is falling, its memory is rising.
-          </p>
-          <p class="font-mono text-[11px] text-base-content/40">
-            {@fleet_size} ships docked · {@atoms.used} atoms minted from ship names · this station has
-            never freed one of them.
+            One message from <span class="text-secondary">{@status.name}</span>
+            to <span class="text-primary">Station.Warehouse</span>, one container out of this
+            ship's state. Look at the laptop: your memory is falling, the warehouse's is rising.
           </p>
         </section>
 
-        <footer class="mt-auto flex items-center justify-between pt-2 font-mono text-[11px]">
+        <footer class="flex shrink-0 items-center justify-between pt-1 font-mono text-[11px]">
           <a
             href="https://github.com/software-mansion/voyager"
             class="underline text-base-content/45 hover:text-primary"

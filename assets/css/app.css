@@ -130,6 +130,9 @@ body {
      is double-tap zoom: the page lurches and the button leaves the thumb.
      `manipulation` keeps pinch zoom and panning, drops only the double tap. */
   touch-action: manipulation;
+  /* And with the cockpit locked to the viewport, the last movement left is the
+     rubber-band bounce on a page with nowhere to scroll. */
+  overscroll-behavior-y: none;
 }
 
 /* Sprite shading. Two derived tones so a sprite only ever needs one colour set
