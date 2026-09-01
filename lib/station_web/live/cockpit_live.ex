@@ -124,11 +124,17 @@ defmodule StationWeb.CockpitLive do
           </div>
         </header>
 
-        <div
-          :if={@congested?}
-          class="pixel-panel border-error/70 bg-error/10 p-3 font-pixel text-[10px] text-error animate-blink"
-        >
-          STATION CONGESTED - QUEUE: {format_count(@stats.queue)}
+        <%!-- The congestion notice keeps its space whether or not it has
+              anything to say. It appears exactly when a thumb is going fastest,
+              and a band of pixels arriving above the button moves the button
+              out from under that thumb mid press. --%>
+        <div class="h-11 shrink-0">
+          <div
+            :if={@congested?}
+            class="pixel-panel flex h-full items-center border-error/70 bg-error/10 px-3 font-pixel text-[10px] text-error animate-blink"
+          >
+            STATION CONGESTED - QUEUE: {format_count(@stats.queue)}
+          </div>
         </div>
 
         <%!-- The same thing the television shows, at arm's length: the
@@ -195,7 +201,7 @@ defmodule StationWeb.CockpitLive do
         </button>
 
         <p class={[
-          "text-center font-mono text-[11px]",
+          "flex min-h-8 items-center justify-center text-center font-mono text-[11px]",
           note_tone(@flash_note)
         ]}>
           {note_text(@flash_note, @status.cargo_type)}
