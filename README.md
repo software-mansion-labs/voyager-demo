@@ -116,44 +116,50 @@ the station saturates with nobody in front of it, lower them.
 | `RESET STATION` | undock everyone, empty the shelves |
 | `RESET LEADERBOARD` | start a day from zero |
 
-## Deploying to the booth
+## Running the booth
 
-The station needs to be a **named node with a known cookie**, because the
-laptop has to be able to attach to it. Distribution ports stay closed: Voyager
-reaches it through an SSH tunnel with a proxied EPMD, which is itself one of the
-features being demonstrated.
-
-```bash
-MIX_ENV=prod mix station.release
-```
-
-Then on the box:
+The booth is one Linux laptop and the wifi it makes. There is no server, no
+domain and no certificate: the laptop runs the station, drives the television
+out of its second video output, and hands out the network the phones join.
 
 ```bash
-export STATION_NODE_NAME=station@127.0.0.1
-export STATION_COOKIE=...              # dedicated, rotated after the conference
-export SECRET_KEY_BASE=...             # mix phx.gen.secret
-export STATION_OPS_TOKEN=...           # mix phx.gen.secret 32
-export STATION_OPS_PASSWORD=...
-export STATION_LEADERBOARD_PATH=/var/lib/station/leaderboard.ets
-export PHX_HOST=... PORT=4000
-bin/server
+BIND_IP=0.0.0.0 elixir --sname station --cookie station-voy-1 -S mix phx.server
 ```
 
-`STATION_NODE_NAME` and `STATION_COOKIE` are required rather than defaulted on
-purpose. A station that quietly came up unnamed would look perfect on the
-television and be invisible to the laptop, which is the one failure nobody
-notices until the doors open.
+`BIND_IP` is the whole difference between a station a phone can reach and one
+only the laptop can see - the default is loopback, because a development
+machine has no business being reachable from the room it is in.
 
-Keep `STATION_LEADERBOARD_PATH` **outside** the release directory. It is the
-one file that has to survive a redeploy — it is the third level of the
-persistence story the booth tells:
+Then, on that laptop:
 
-```
-process state  →  dies with the process
-ETS            →  survives the process, dies with the node
-file           →  survives the node
-```
+| screen | where |
+| --- | --- |
+| television, second display, fullscreen | `/tv` |
+| Voyager, on the laptop's own screen | attaches to `station@<hostname>` with the cookie |
+| booth staff, on a phone | `/ops/dev`, username and password `ops` |
+
+The television carries the QR code, and the QR code carries **the address the
+laptop actually has on that network** - read off the running machine at page
+load rather than written down the night before, because the one thing that is
+certainly different at the venue is which address the laptop got. Reload `/tv`
+after joining a different network and the code follows. `STATION_DOCK_URL`
+overrides it when the guess is wrong, which happens when the laptop is on wifi
+and ethernet at once.
+
+Two things to test on the actual network before the doors open:
+
+- **Client isolation.** Plenty of conference access points refuse to route
+  between two clients, and a station nobody can reach is a black television.
+  Scan the code from a phone on that network. If it fails, the laptop's own
+  hotspot is the answer, and it is also the answer to the venue's wifi going
+  down at eleven.
+- **How many phones the hotspot really holds.** A laptop access point is
+  usually good for something like ten clients, and the ship cap is
+  twenty five. That gap is worth knowing about in advance rather than
+  discovering it with a queue standing there.
+
+Nothing is exposed beyond that network: the station listens on the laptop's
+wifi address, and the node is only reachable from the laptop itself.
 
 Other deployment notes, in the order they will bite:
 

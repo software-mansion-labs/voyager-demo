@@ -1,5 +1,11 @@
 import Config
 
+# The address the endpoint listens on, as a tuple, from BIND_IP. Parsed here
+# rather than in the application because config files are evaluated before the
+# application is compiled, so nothing of ours exists yet.
+{:ok, bind_ip} =
+  System.get_env("BIND_IP", "127.0.0.1") |> String.to_charlist() |> :inet.parse_address()
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -7,9 +13,21 @@ import Config
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
 config :station, StationWeb.Endpoint,
-  # Binding to loopback ipv4 address prevents access from other machines.
-  # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}],
+  # Loopback by default, because a development machine has no business being
+  # reachable from the coffee shop it is sitting in.
+  #
+  # The booth is the exception and the reason both of these are environment
+  # variables: the station runs on a laptop on its own hotspot, so it has to
+  # listen on the address the phones can see.
+  #
+  #     BIND_IP=0.0.0.0 mix phx.server
+  #
+  # PORT is honoured too, so a second station can be started next to a running
+  # one without stopping it.
+  http: [
+    ip: bind_ip,
+    port: String.to_integer(System.get_env("PORT", "4000"))
+  ],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
