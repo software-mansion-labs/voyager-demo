@@ -114,22 +114,17 @@ defmodule StationWeb.StationOpsLive do
         }
       end
 
-    visitor_delta = scene_ships |> Enum.map(& &1.delta) |> Enum.sum()
-    accepted_delta = delta(previous && previous.accepted, stats.accepted)
-
     payload = %{
       ships: scene_ships,
       haulers: fleet.haulers,
-      freighters: fleet.freighters,
       haulerDelta: delta(previous && previous.collected, stats.collected),
-      fleetDelta: max(accepted_delta - visitor_delta, 0),
       queue: stats.queue,
       queueCrates: min(stats.queue, @queue_crates),
       stored: safe_ratio(stats.stored, capacity),
       congested: congested?
     }
 
-    previous = %{delivered: delivered, accepted: stats.accepted, collected: stats.collected}
+    previous = %{delivered: delivered, collected: stats.collected}
 
     {Jason.encode!(payload), previous}
   end

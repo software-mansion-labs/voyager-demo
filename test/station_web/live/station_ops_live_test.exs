@@ -44,17 +44,6 @@ defmodule StationWeb.StationOpsLiveTest do
 
       assert %{"ships" => [%{"delta" => 1}]} = scene(render(view))
     end
-
-    test "separates what the fleet delivered from what the visitors did", %{conn: conn} do
-      [container] = Station.Cargo.build_hold("ore", 1)
-      {:ok, view, _html} = live(conn, ~p"/tv")
-
-      Station.Warehouse.accept(nil, container)
-      :sys.get_state(Station.Warehouse)
-      send(view.pid, :refresh)
-
-      assert %{"fleetDelta" => 1, "ships" => []} = scene(render(view))
-    end
   end
 
   defp scene(html) do
