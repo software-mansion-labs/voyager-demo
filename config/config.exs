@@ -22,29 +22,30 @@ config :station,
   # One click removes exactly one box from the grid on the phone, so this is
   # also the size of that grid.
   hold_size: 120,
-  # Server side, because a cookie clicker on a public URL invites autoclickers.
-  # The congested ceiling is what makes a backed up station feel heavy in the thumb.
-  # Four presses a second, two while the station is backed up. Ten was a rate no
-  # station could serve at these costs, so the queue only ever grew; two was
-  # slow enough that the button felt broken and the throttle notice was the
-  # normal state rather than the interesting one. At four, one excited visitor
-  # can push a single clerk over on their own, and the congested ceiling halves
-  # the whole room to what the inspection crew can actually drain.
-  transfer_limits: [per_second: 4, congested_per_second: 2, congested_queue: 100],
+  # Loading a container onto the ramp takes this long, in the ship's own
+  # process. It is the rate limit and the lesson in one: a ship ships at ramp
+  # speed however fast anyone taps, and the taps beyond it pile up as a real
+  # message queue on the visitor's own process - findable in Voyager.
+  ship_load_ms: 300,
+  # Past this mailbox depth the cockpit stops accepting presses at all: an
+  # autoclicker gets a bounded queue, not an unbounded one.
+  ship_queue_cap: 30,
+  # The warehouse queue depth at which the station tells everyone it is choking.
+  congested_queue: 100,
 
   # --- cargo -----------------------------------------------------------------
   # `chunks` are 32 byte pieces, so they decide how fast warehouse memory grows.
   # `inspection_rounds` decide how long a single container takes to clear.
   # These two are knobs one and two of the four in the concept.
   #
-  # The rounds below aim at 20 / 200 / 200 / 400 ms per container. A press is
-  # still a visible piece of work rather than a blur, but half a second a
-  # container meant one clerk cleared two a second, so a queue built by a few
-  # excited thumbs took half a minute of dead air to work off after everybody
-  # had stopped pressing. At 200 ms one clerk clears five a second: the queue
-  # still climbs in front of an audience, and it comes back down while they are
-  # still looking at it. Measured at 6060 rounds per millisecond on an M-class
-  # laptop, which is where these numbers come from.
+  # The rounds below are the cost for ONE docked visitor - 40 / 400 / 400 /
+  # 800 ms per container - and the crowd divides them: with N ships docked a
+  # container costs a Nth (see Cargo.effective_rounds/1). The offered load per
+  # clerk is then the same whoever shows up, about 130% when the room really
+  # races, so congestion is reachable by two people and survivable by thirty,
+  # and the warehouse absorbs cargo fast enough that a crowd fills its memory
+  # to capacity in minutes instead of feeding an ever-deeper queue. Measured at
+  # 6060 rounds per millisecond on an M-class laptop.
   #
   # Every number under here is downstream of those four: one clerk clears about
   # three containers a second, and the fleet, the click rate and the haulers are
@@ -55,25 +56,25 @@ config :station,
     "ice" => %{
       label: "ICE",
       chunks: 16,
-      inspection_rounds: 120_000,
+      inspection_rounds: 240_000,
       blurb: "Light, cheap, endless."
     },
     "ore" => %{
       label: "ORE",
       chunks: 128,
-      inspection_rounds: 1_200_000,
+      inspection_rounds: 2_400_000,
       blurb: "The balanced default."
     },
     "machinery" => %{
       label: "MACHINERY",
       chunks: 1_024,
-      inspection_rounds: 1_200_000,
+      inspection_rounds: 2_400_000,
       blurb: "Bulky. Fills the warehouse fastest."
     },
     "antimatter" => %{
       label: "ANTIMATTER",
       chunks: 16,
-      inspection_rounds: 2_400_000,
+      inspection_rounds: 4_800_000,
       blurb: "Tiny, and a nightmare to inspect."
     }
   },

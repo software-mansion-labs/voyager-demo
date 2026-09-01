@@ -44,7 +44,8 @@ defmodule Station.DockingBayTest do
 
   test "undocking leaves nothing behind but the leaderboard row" do
     {:ok, name} = DockingBay.dock("Nostromo", "ice")
-    {:ok, _} = Ship.transfer(name)
+    :ok = Ship.transfer(name)
+    :sys.get_state(Process.whereis(name))
     settle()
 
     ref = Process.monitor(Process.whereis(name))

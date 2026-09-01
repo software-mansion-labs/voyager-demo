@@ -38,6 +38,10 @@ config :station,
   warehouse_capacity: 10,
   hauler_batch: 2,
   max_ships: 3,
+  # The ramp is instant in tests - the suite asserts on flow, not on pacing.
+  ship_load_ms: 0,
+  ship_queue_cap: 5,
+  congested_queue: 250,
   cargo_types: %{
     "ice" => %{label: "ICE", chunks: 1, inspection_rounds: 10, blurb: "Light, cheap, endless."},
     "ore" => %{label: "ORE", chunks: 2, inspection_rounds: 2_000, blurb: "The balanced default."},

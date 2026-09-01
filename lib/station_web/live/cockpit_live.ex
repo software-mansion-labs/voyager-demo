@@ -14,7 +14,6 @@ defmodule StationWeb.CockpitLive do
   alias Station.Cargo
   alias Station.DockingBay
   alias Station.Leaderboard
-  alias Station.Metrics
   alias Station.Ship
   alias Station.Warehouse
   alias StationWeb.DockController
@@ -45,26 +44,33 @@ defmodule StationWeb.CockpitLive do
 
   @impl true
   def handle_event("transfer", _params, socket) do
-    case Ship.transfer(socket.assigns.ship) do
-      {:ok, result} ->
+    ship = socket.assigns.ship
+
+    # The press is a cast: the ship loads containers at its own ramp speed and
+    # a faster thumb piles messages up on the ship's own process, where Voyager
+    # can find them. The only hard stop lives here - past the cap the mailbox
+    # is deep enough to make the point, and an autoclicker gets a bounded queue.
+    cond do
+      Ship.queue_len(ship) >= queue_cap() ->
         socket
-        |> assign(:hold, result.hold)
-        |> assign(:delivered, result.delivered)
-        |> assign(:flash_note, if(result.refilled?, do: :refilled))
-        |> push_event("station:transferred", %{hold: result.hold, refilled: result.refilled?})
+        |> assign(:flash_note, :backed_up)
+        |> push_event("station:throttled", %{})
         |> noreply()
 
-      {:throttled, retry_in} ->
-        socket
-        |> assign(:flash_note, :throttled)
-        |> push_event("station:throttled", %{retry_in: retry_in})
-        |> noreply()
+      true ->
+        case Ship.transfer(ship) do
+          :ok ->
+            socket
+            |> assign(:flash_note, nil)
+            |> push_event("station:transferred", %{refilled: false})
+            |> noreply()
 
-      {:error, :gone} ->
-        socket
-        |> put_flash(:info, "Your ship has left the station. Register again to dock.")
-        |> redirect(to: ~p"/")
-        |> noreply()
+          {:error, :gone} ->
+            socket
+            |> put_flash(:info, "Your ship has left the station. Register again to dock.")
+            |> redirect(to: ~p"/")
+            |> noreply()
+        end
     end
   end
 
@@ -82,22 +88,36 @@ defmodule StationWeb.CockpitLive do
 
       status ->
         stats = Warehouse.stats()
+        refilled? = status.refills > Map.get(socket.assigns, :refills, status.refills)
 
         socket
         |> assign(:status, status)
         |> assign(:hold, status.hold)
         |> assign(:delivered, status.delivered)
+        |> assign(:refills, status.refills)
         |> assign(:stats, stats)
         |> assign(:congested?, stats.queue >= congestion_threshold())
         |> assign(:rank, Leaderboard.rank(status.slug))
         |> assign(:fleet_size, DockingBay.count())
         |> assign(:atoms, DockingBay.atom_budget())
-        |> assign(:throttled, Metrics.get(:throttled))
+        |> then(fn socket ->
+          if refilled? do
+            socket
+            |> assign(:flash_note, :refilled)
+            |> push_event("station:transferred", %{refilled: true})
+          else
+            socket
+          end
+        end)
     end
   end
 
   defp congestion_threshold do
-    Application.fetch_env!(:station, :transfer_limits)[:congested_queue]
+    Application.fetch_env!(:station, :congested_queue)
+  end
+
+  defp queue_cap do
+    Application.fetch_env!(:station, :ship_queue_cap)
   end
 
   @impl true
@@ -177,7 +197,10 @@ defmodule StationWeb.CockpitLive do
           <div class="flex items-baseline justify-between">
             <span class="font-pixel text-[9px] text-base-content/50">HOLD</span>
             <span class="font-mono text-[11px] text-base-content/45">
-              {@hold}/{@hold_size} {String.upcase(@status.cargo_type)} · {format_bytes(@status.memory)}
+              {@hold}/{@hold_size} {String.upcase(@status.cargo_type)} · {format_bytes(@status.memory)}<span
+                :if={@status.queue > 0}
+                class="text-warning"
+              > · {@status.queue} in mailbox</span>
             </span>
           </div>
 
@@ -335,11 +358,13 @@ defmodule StationWeb.CockpitLive do
   defp queue_tone(true), do: "text-error"
   defp queue_tone(false), do: "text-base-content"
 
-  defp note_tone(:throttled), do: "text-warning"
+  defp note_tone(:backed_up), do: "text-warning"
   defp note_tone(:refilled), do: "text-success"
   defp note_tone(_), do: "text-base-content/40"
 
-  defp note_text(:throttled, _), do: "EASING OFF - the warehouse sets the pace, not your thumb."
+  defp note_text(:backed_up, _),
+    do: "RAMP BACKED UP - your ship's mailbox is full, watch it drain in Voyager."
+
   defp note_text(:refilled, type), do: "FRESH LOAD OF #{String.upcase(type)} TAKEN ON."
   defp note_text(_, _), do: "one press · one message · one container"
 end

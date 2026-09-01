@@ -60,16 +60,22 @@ defmodule Mix.Tasks.Station.Calibrate do
       )
     end
 
-    visitors = Application.fetch_env!(:station, :max_ships)
-    rate = Application.fetch_env!(:station, :transfer_limits)[:per_second]
-    crowd = visitors * rate * average / 1000 * 100
+    # A ship ships at ramp speed, and the crowd divides the inspection cost, so
+    # the offered load per clerk is the same for one racing visitor or thirty.
+    rate = 1000 / Application.fetch_env!(:station, :ship_load_ms)
+    per_visitor = for {type, ms} <- costs, do: {type, rate * ms / 1000 * 100}
+
+    IO.puts("\n  a room racing flat out, per clerk (crowd divides the cost, so any crowd)\n")
+
+    for {type, load} <- per_visitor do
+      IO.puts("  #{pad(type, 12)}  #{Float.round(load, 1)}% of one warehouse")
+    end
 
     IO.puts("""
 
-      a full house of #{visitors} ships clicking flat out adds #{Float.round(crowd, 1)}%.
-
-      Above 100% the warehouse queue climbs and numer 5.1 works. Well below it,
-      raise :inspection_rounds in config/config.exs.
+      Above 100% the warehouse queue climbs and the ops switch matters. Well
+      below it, raise :inspection_rounds in config/config.exs. These are the
+      one-visitor costs: with N ships docked each container costs a Nth.
     """)
   end
 

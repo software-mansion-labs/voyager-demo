@@ -18,6 +18,9 @@ defmodule Station.DockingBay do
   alias Station.ShipNames
 
   @minted :station_ship_atoms
+  # Where every ship publishes its snapshot, because nothing may read a ship
+  # with a call: a ship sleeps while it loads, and a caller would sleep with it.
+  @status :station_ship_status
   @fallback_key {__MODULE__, :fallback_seq}
 
   @type dock_error :: :at_capacity | :name_taken | :too_short | :blocked | :invalid
@@ -27,13 +30,16 @@ defmodule Station.DockingBay do
 
   @impl true
   def init(_opts) do
-    if :ets.whereis(@minted) == :undefined do
-      :ets.new(@minted, [:set, :public, :named_table, read_concurrency: true])
+    for table <- [@minted, @status], :ets.whereis(table) == :undefined do
+      :ets.new(table, [:set, :public, :named_table, read_concurrency: true])
     end
 
     :persistent_term.put(@fallback_key, :atomics.new(1, signed: false))
     DynamicSupervisor.init(strategy: :one_for_one)
   end
+
+  @spec status_table() :: atom()
+  def status_table, do: @status
 
   @doc """
   Registers a ship and starts it.

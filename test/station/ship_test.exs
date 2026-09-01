@@ -13,7 +13,10 @@ defmodule Station.ShipTest do
   test "one click moves exactly one container", %{ship: ship} do
     hold_size = Station.Cargo.hold_size()
 
-    assert {:ok, %{hold: hold, delivered: 1, refilled?: false}} = Ship.transfer(ship)
+    assert :ok = Ship.transfer(ship)
+    drain(ship)
+
+    assert %{hold: hold, delivered: 1, refills: 0} = Ship.status(ship)
     assert hold == hold_size - 1
 
     settle()
@@ -23,28 +26,28 @@ defmodule Station.ShipTest do
   test "an empty hold is refilled rather than stranding the visitor", %{ship: ship} do
     hold_size = Station.Cargo.hold_size()
 
-    result =
-      Enum.reduce(1..hold_size, nil, fn _, _ ->
-        wait_for_token()
-        Ship.transfer(ship)
-      end)
+    for _ <- 1..hold_size, do: Ship.transfer(ship)
+    drain(ship)
 
-    assert {:ok, %{refilled?: true, hold: ^hold_size}} = result
+    assert %{refills: 1, hold: ^hold_size} = Ship.status(ship)
   end
 
-  test "the rate limit lives on the server, not in the browser", %{ship: ship} do
-    limit = Application.fetch_env!(:station, :transfer_limits)[:per_second]
+  test "presses beyond ramp speed queue on the ship itself", %{ship: ship} do
+    # A slow ramp, so casts pile up in the mailbox the way fast thumbs do.
+    original = Application.fetch_env!(:station, :ship_load_ms)
+    Application.put_env(:station, :ship_load_ms, 40)
+    on_exit(fn -> Application.put_env(:station, :ship_load_ms, original) end)
 
-    results = for _ <- 1..(limit * 3), do: Ship.transfer(ship)
+    for _ <- 1..5, do: Ship.transfer(ship)
 
-    assert Enum.any?(results, &match?({:throttled, _}, &1)),
-           "an autoclicker was allowed to run unbounded"
+    assert Ship.queue_len(ship) > 0, "a fast thumb left no trace on the ship's own mailbox"
 
-    assert Metrics.get(:throttled) > 0
+    drain(ship)
+    assert %{delivered: 5} = Ship.status(ship)
   end
 
-  test "status is what the phone shows on its badge", %{ship: ship} do
-    assert %{name: ^ship, slug: "nostromo", cargo_type: "ice", pid: "#PID" <> _} =
+  test "status is what the phone shows on its badge, and costs no message", %{ship: ship} do
+    assert %{name: ^ship, slug: "nostromo", cargo_type: "ice", pid: "#PID" <> _, queue: 0} =
              Ship.status(ship)
   end
 
@@ -59,6 +62,9 @@ defmodule Station.ShipTest do
   test "a ship that stops shipping drifts off while the cockpit is still polling",
        %{ship: ship} do
     with_ttl(250)
+    # The shortened ttl arms on the next press - nothing else touches the
+    # process's clock any more, status included, which is the point.
+    Ship.transfer(ship)
     ref = Process.monitor(Process.whereis(ship))
     poller = poll_status(ship, 40)
 
@@ -92,6 +98,12 @@ defmodule Station.ShipTest do
     on_exit(fn -> Application.put_env(:station, :ship_ttl_ms, original) end)
   end
 
+  # Blocks until the ship has worked through everything already in its mailbox.
+  defp drain(ship) do
+    :sys.get_state(Process.whereis(ship))
+    :ok
+  end
+
   # Stands in for the cockpit's refresh timer: asks and asks and never presses.
   defp poll_status(ship, every) do
     spawn(fn ->
@@ -101,11 +113,5 @@ defmodule Station.ShipTest do
       end)
       |> Stream.run()
     end)
-  end
-
-  # The bucket refills continuously, so a test that wants every transfer to land
-  # has to wait for a token like a real thumb would.
-  defp wait_for_token do
-    Process.sleep(div(1000, Application.fetch_env!(:station, :transfer_limits)[:per_second]) + 5)
   end
 end
