@@ -23,16 +23,10 @@ config :phoenix,
 
 # Station: local defaults. The prod values come from the environment, see
 # config/runtime.exs.
-# The background fleet is switched off in tests: it is the demo's sea level, and
-# a sea level makes assertions about the warehouse flaky. Cargo is tiny and the
-# inspection is cheap so the suite stays fast.
+# Haulers are off in tests - a drain running in the background makes assertions
+# about the warehouse flaky. Cargo is tiny and the inspection is cheap so the
+# suite stays fast.
 config :station,
-  traffic: :quiet,
-  traffic_levels: %{
-    quiet: %{freighters: 0, interval_ms: 1_000},
-    normal: %{freighters: 1, interval_ms: 1_000},
-    rush_hour: %{freighters: 2, interval_ms: 1_000}
-  },
   haulers: 0,
   hold_size: 5,
   warehouse_capacity: 10,

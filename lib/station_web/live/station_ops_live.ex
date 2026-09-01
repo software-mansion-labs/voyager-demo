@@ -180,9 +180,6 @@ defmodule StationWeb.StationOpsLive do
             ]}>
               {@settings.warehouse_mode |> to_string() |> String.upcase() |> String.replace("_", " ")}
             </span>
-            <span class="border-2 border-secondary px-3 py-2 text-secondary">
-              {@settings.traffic |> to_string() |> String.upcase() |> String.replace("_", " ")}
-            </span>
             <span class="border-2 border-base-content/20 px-3 py-2 text-base-content/60">
               {@inspectors} INSPECTORS
             </span>
@@ -274,7 +271,7 @@ defmodule StationWeb.StationOpsLive do
               <.readout
                 label="HAULED AWAY"
                 value={format_count(@stats.collected)}
-                hint={"#{@fleet.haulers} haulers · #{@fleet.freighters} freighters"}
+                hint={"#{@fleet.haulers} haulers"}
                 tone="text-success"
               />
             </section>

@@ -51,25 +51,6 @@ defmodule Station.Cargo do
     for id <- 1..count, do: %{type: type, id: id, payload: random_payload(chunks)}
   end
 
-  @doc """
-  A cargo type for the background fleet, drawn from the configured weights.
-
-  Not uniform on purpose - see `:freighter_cargo_weights` in config.
-  """
-  @spec random_type() :: type()
-  def random_type do
-    weights = Application.fetch_env!(:station, :freighter_cargo_weights)
-    pick(weights, :rand.uniform(Enum.sum(Keyword.values(weights))))
-  end
-
-  @doc "Average inspection weight per background container, for calibration."
-  @spec weighted_types() :: [{type(), float()}]
-  def weighted_types do
-    weights = Application.fetch_env!(:station, :freighter_cargo_weights)
-    total = Enum.sum(Keyword.values(weights))
-    for {type, weight} <- weights, do: {to_string(type), weight / total}
-  end
-
   @spec container_bytes(type()) :: pos_integer()
   def container_bytes(type) do
     %{chunks: chunks} = preset(type)
@@ -109,10 +90,6 @@ defmodule Station.Cargo do
   # inside the very process the demo congests, so it must never send a message.
   defp crowd do
     max(Station.Metrics.get(:ships_docked) - Station.Metrics.get(:ships_undocked), 1)
-  end
-
-  defp pick([{type, weight} | rest], roll) do
-    if roll <= weight, do: to_string(type), else: pick(rest, roll - weight)
   end
 
   defp random_payload(chunks) do

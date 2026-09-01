@@ -35,11 +35,8 @@ defmodule StationWeb.OpsLiveTest do
     assert InspectionCrew.size() == 0
   end
 
-  test "traffic and haulers are staff controls, not code changes", %{conn: conn, token: token} do
+  test "haulers are a staff control, not a code change", %{conn: conn, token: token} do
     {:ok, view, _html} = live(conn, ~p"/ops/#{token}")
-
-    render_click(view, "traffic", %{"level" => "rush_hour"})
-    assert OpsPanel.traffic() == :rush_hour
 
     render_click(view, "haulers", %{"factor" => "4"})
     assert OpsPanel.hauler_boost() == 4

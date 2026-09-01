@@ -1,5 +1,5 @@
 defmodule Station.CargoTest do
-  use ExUnit.Case, async: true
+  use Station.Case, async: false
 
   alias Station.Cargo
 
@@ -25,10 +25,19 @@ defmodule Station.CargoTest do
     assert cost("ore") < cost("antimatter")
   end
 
-  test "background cargo weights sum to one and exclude nothing" do
-    weights = Cargo.weighted_types()
-    assert_in_delta Enum.sum(Enum.map(weights, &elem(&1, 1))), 1.0, 0.0001
-    assert Enum.map(weights, &elem(&1, 0)) |> Enum.sort() == Enum.sort(Cargo.types())
+  # The crowd divides the cost, so a full room does not bury one clerk under
+  # twenty five times the work - and the punchline ordering above survives it,
+  # because every type is divided by the same room.
+  test "the crowd divides the inspection cost" do
+    solo = Cargo.effective_rounds("ore")
+
+    {:ok, a} = Station.DockingBay.dock("Nostromo", "ice")
+    {:ok, b} = Station.DockingBay.dock("Serenity", "ice")
+
+    assert Cargo.effective_rounds("ore") == div(solo, 2)
+
+    Station.Ship.undock(a)
+    Station.Ship.undock(b)
   end
 
   defp cost(type) do

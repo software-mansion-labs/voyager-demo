@@ -21,7 +21,6 @@ defmodule Station.OpsPanel do
 
   @type settings :: %{
           warehouse_mode: Warehouse.mode(),
-          traffic: TrafficControl.level(),
           hauler_boost: pos_integer()
         }
 
@@ -34,9 +33,6 @@ defmodule Station.OpsPanel do
   @spec warehouse_mode() :: Warehouse.mode()
   def warehouse_mode, do: settings().warehouse_mode
 
-  @spec traffic() :: TrafficControl.level()
-  def traffic, do: settings().traffic
-
   @spec hauler_boost() :: pos_integer()
   def hauler_boost, do: settings().hauler_boost
 
@@ -44,9 +40,6 @@ defmodule Station.OpsPanel do
   def set_warehouse_mode(mode) when mode in [:single_clerk, :inspection_crew] do
     GenServer.call(__MODULE__, {:set_warehouse_mode, mode})
   end
-
-  @spec set_traffic(TrafficControl.level()) :: :ok
-  def set_traffic(level), do: GenServer.call(__MODULE__, {:set_traffic, level})
 
   @doc "Sends out more haulers. Multiplies the baseline, so the drop is quick."
   @spec set_hauler_boost(pos_integer()) :: :ok
@@ -75,13 +68,6 @@ defmodule Station.OpsPanel do
   def handle_call({:set_warehouse_mode, mode}, _from, state) do
     apply_warehouse_mode(mode)
     Events.emit(:ops, "WAREHOUSE MODE -> #{mode |> to_string() |> String.upcase()}")
-    {:reply, :ok, state}
-  end
-
-  def handle_call({:set_traffic, level}, _from, state) do
-    TrafficControl.set_level(level)
-    update(:traffic, level)
-    Events.emit(:ops, "TRAFFIC -> #{level |> to_string() |> String.upcase()}")
     {:reply, :ok, state}
   end
 
@@ -132,7 +118,6 @@ defmodule Station.OpsPanel do
   defp defaults do
     %{
       warehouse_mode: Application.fetch_env!(:station, :warehouse_mode),
-      traffic: Application.fetch_env!(:station, :traffic),
       hauler_boost: 1
     }
   end

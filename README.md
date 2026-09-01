@@ -81,14 +81,18 @@ all of it in Voyager, inside a minute.**
 ## Tuning on the first morning
 
 Twenty-five idle GenServers are nothing on the BEAM, so the load is designed
-rather than incidental. Four knobs decide whether any of it is visible, and all
-four live in one block at the top of `config/config.exs`:
+rather than incidental — and all of it is visitors: nothing sends the warehouse
+a message except the people in the room. Four knobs decide whether any of it is
+visible, and all four live in one block at the top of `config/config.exs`:
 
-1. **`:inspection_rounds`** per cargo — whether one press is visible at all.
+1. **`:inspection_rounds`** per cargo — the cost of one press for one lone
+   visitor. The crowd divides it, so a room saturates the clerk by the same
+   margin as one racing thumb.
 2. **`:chunks`** per cargo — how fast warehouse memory grows.
-3. **`:traffic_levels`** — the sea level the human waves show up against.
-4. **`:haulers` and `:hauler_boosts`** — how fast memory creeps up, and how
-   hard the fix pulls it back.
+3. **`:ship_load_ms`** — the ramp: how fast one ship can ship, and what a
+   faster thumb piles up on its own process.
+4. **`:haulers` and `:hauler_boosts`** — the drain, and how hard the fix
+   pulls the memory back down.
 
 Measure before you turn anything:
 
@@ -98,9 +102,8 @@ mix station.calibrate
 
 It prints the measured cost of one container of each cargo type on *this*
 machine, what the warehouse can absorb before its queue starts climbing, and
-the offered load at each traffic level. If a full house cannot push the station
-past 100%, the bottleneck demo will not fire — raise `:inspection_rounds`. If
-the station saturates with nobody in front of it, lower them.
+the load a racing room offers per clerk. If that number is under 100%, the
+bottleneck demo will not fire — raise `:inspection_rounds`.
 
 ## The ops panel
 
@@ -110,7 +113,6 @@ the station saturates with nobody in front of it, lower them.
 | --- | --- |
 | `SINGLE CLERK` / `INSPECTION CREW` | the bottleneck demo, and its fix |
 | `x1` / `x4` / `x8` haulers | the producer/consumer demo, and its fix |
-| `QUIET` / `NORMAL` / `RUSH HOUR` | background traffic |
 | `REMOVE` next to a ship | a name that got past the filter |
 | `RESTART WAREHOUSE` | shows a supervisor restart: cargo dies, ETS survives |
 | `RESET STATION` | undock everyone, empty the shelves |
@@ -189,10 +191,9 @@ station (app)
    │  ├─ ship_millennium_falcon
    │  └─ …                      (capped at ~25)
    ├─ Station.TrafficControl
-   │  ├─ Station.Dispatcher     – keeps both lines staffed
-   │  ├─ Station.FreighterLine  – producers, many
+   │  ├─ Station.Dispatcher     – keeps the hauler crew staffed
    │  └─ Station.HaulerLine     – consumers, deliberately too few
-   └─ Station.Watchdog          – samples the vitals, cuts traffic if drowning
+   └─ Station.Watchdog          – samples the vitals, sounds the alarm
 ```
 
 The scene is server-authoritative and client-drawn. The LiveView sends one JSON
