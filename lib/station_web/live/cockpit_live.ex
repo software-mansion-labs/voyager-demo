@@ -109,7 +109,7 @@ defmodule StationWeb.CockpitLive do
             and the button never leaves the reachable half of the screen. The
             hold grid is the one flexible element - it absorbs whatever height
             this particular phone has to give. --%>
-      <div class="mx-auto flex h-dvh w-full max-w-md flex-col gap-3 overflow-hidden px-4 py-3">
+      <div class="mx-auto flex h-dvh w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
         <header class={[
           "pixel-panel flex items-center gap-3 p-3",
           if(@congested?, do: "border-error/70", else: "pixel-panel-accent")
@@ -129,51 +129,51 @@ defmodule StationWeb.CockpitLive do
           </div>
         </header>
 
-        <%!-- The congestion notice keeps its space whether or not it has
-              anything to say. It appears exactly when a thumb is going fastest,
-              and a band of pixels arriving above the button moves the button
-              out from under that thumb mid press. --%>
-        <div class="h-9 shrink-0">
-          <div
-            :if={@congested?}
-            class="pixel-panel flex h-full items-center border-error/70 bg-error/10 px-3 font-pixel text-[10px] text-error animate-blink"
-          >
-            STATION CONGESTED - QUEUE: {format_count(@stats.queue)}
-          </div>
-        </div>
-
         <%!-- The same thing the television shows, at arm's length: the
               container leaves this ship and crosses to the station. A throttled
               press turns back short of the door, so backpressure is something
               the visitor watches as well as feels. --%>
-        <section
-          id="cockpit-flight"
-          phx-hook=".Flight"
-          phx-update="ignore"
-          class="scene pixel-panel relative h-16 shrink-0"
-        >
-          <div class="scene-stars scene-stars-far"></div>
-
+        <%!-- The congestion notice lies on top of the flight strip instead of
+              taking a row of its own: it appears exactly when a thumb is going
+              fastest, and any band of pixels entering the layout at that moment
+              moves the button out from under that thumb mid-press. --%>
+        <div class="relative shrink-0">
           <div
-            class={["scene-actor w-12", Sprites.cargo_color(@status.cargo_type)]}
-            style="left: 14%; top: 50%"
+            :if={@congested?}
+            class="pixel-panel absolute inset-x-2 top-2 z-10 flex items-center border-error/70 bg-error/10 px-3 py-2 font-pixel text-[10px] text-error animate-blink"
           >
-            <div class="scene-hover relative">
-              <span class="scene-thruster"></span>
-              <Sprites.ship class="w-full" />
+            STATION CONGESTED - QUEUE: {format_count(@stats.queue)}
+          </div>
+
+          <section
+            id="cockpit-flight"
+            phx-hook=".Flight"
+            phx-update="ignore"
+            class="scene pixel-panel relative h-14"
+          >
+            <div class="scene-stars scene-stars-far"></div>
+
+            <div
+              class={["scene-actor w-12", Sprites.cargo_color(@status.cargo_type)]}
+              style="left: 14%; top: 50%"
+            >
+              <div class="scene-hover relative">
+                <span class="scene-thruster"></span>
+                <Sprites.ship class="w-full" />
+              </div>
             </div>
-          </div>
 
-          <span data-flight-port class="scene-port text-primary" style="left: 74%; top: 50%"></span>
+            <span data-flight-port class="scene-port text-primary" style="left: 74%; top: 50%"></span>
 
-          <div class="scene-actor w-24 text-primary" style="left: 84%; top: 50%">
-            <Sprites.station_hub class="w-full" />
-          </div>
+            <div class="scene-actor w-24 text-primary" style="left: 84%; top: 50%">
+              <Sprites.station_hub class="w-full" />
+            </div>
 
-          <div data-flight-lane class="absolute inset-0"></div>
-        </section>
+            <div data-flight-lane class="absolute inset-0"></div>
+          </section>
+        </div>
 
-        <section class="pixel-panel flex min-h-36 flex-1 flex-col p-3">
+        <section class="pixel-panel flex min-h-24 flex-1 flex-col p-3">
           <div class="flex items-baseline justify-between">
             <span class="font-pixel text-[9px] text-base-content/50">HOLD</span>
             <span class="font-mono text-[11px] text-base-content/45">
@@ -219,13 +219,13 @@ defmodule StationWeb.CockpitLive do
             value={format_count(@stats.queue)}
             tone={queue_tone(@congested?)}
           />
-          <.readout label="WH MEMORY" value={format_bytes(@stats.memory)} tone="text-primary" />
+          <.readout label="MEMORY" value={format_bytes(@stats.memory)} tone="text-primary" />
         </section>
 
-        <%!-- Clipped rather than scrolled when a short phone runs out of room:
-              an inner scroll region would give the thumb the drag surface the
-              fixed viewport just took away. --%>
-        <section class="pixel-panel flex min-h-0 shrink flex-col gap-2 overflow-hidden p-3">
+        <%!-- Never clipped: a sentence cut in half reads as a bug, so the
+              explainer keeps its whole height and the hold grid above is what
+              absorbs a short viewport - its bars just draw thinner. --%>
+        <section class="pixel-panel flex shrink-0 flex-col gap-2 p-3">
           <p class="font-pixel text-[9px] text-base-content/50">WHAT JUST HAPPENED</p>
           <p class="font-mono text-xs leading-relaxed text-base-content/60">
             One message from <span class="text-secondary">{@status.name}</span>
