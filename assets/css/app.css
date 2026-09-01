@@ -448,50 +448,16 @@ body {
   animation: pixel-blink 0.3s steps(1, end) infinite;
 }
 
+/* A paste that went wrong on the way in: this block had a copy of the ship
+   label, lane, port and thruster rules pasted into the middle of its selector
+   list, which turned the selector into ".scene-hover, .scene-ship-label" and
+   left "animation: none" applying to the thruster alone. The stars and the
+   hover bob kept animating for a visitor who asked the machine not to. */
 @media (prefers-reduced-motion: reduce) {
   .scene-stars-far,
   .scene-stars-near,
   .scene-hover,
-  /* Ship names hang below the outer column and above the inner one, so a long
-   name never lands on its neighbour no matter how wide the screen is. */
-.scene-ship-label {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1;
-  opacity: 0.9;
-}
-
-[data-lane="0"] .scene-ship-label {
-  top: 100%;
-  margin-top: 5px;
-}
-
-[data-lane="1"] .scene-ship-label {
-  bottom: 100%;
-  margin-bottom: 5px;
-}
-
-/* The dock lights. Off by default, flared briefly as cargo lands. */
-.scene-port {
-  position: absolute;
-  width: 2.4%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  background-color: currentColor;
-  opacity: 0;
-  transition: opacity 140ms steps(3, end);
-}
-
-.scene-port.is-hot {
-  opacity: 0.75;
-  transition-duration: 0ms;
-}
-
-.scene-thruster {
+  .scene-thruster {
     animation: none;
   }
 }
