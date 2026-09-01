@@ -248,9 +248,12 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
+  /* Literal rather than a mix, for the same reason as .scene above: Safari
+     drops a gradient that contains color-mix(), and takes the scanlines with
+     it. This is --color-base-300 at 55%. */
+  background-image: repeating-linear-gradient(
     180deg,
-    color-mix(in oklch, var(--color-base-300) 55%, transparent) 0 1px,
+    oklch(12% 0.02 264 / 55%) 0 1px,
     transparent 1px 3px
   );
   opacity: 0.35;
@@ -278,12 +281,26 @@ body {
    one relative box, so the whole scene scales to whatever screen it lands on.
    --------------------------------------------------------------------------- */
 
+/* Two rules for one background, and neither of them a `background` shorthand.
+
+   Safari renders `color-mix()` happily on its own - the ship labels use one -
+   but not inside a gradient: the function fails to parse, the whole `background`
+   declaration goes with it, and what shows through is the panel underneath, two
+   shades lighter. The scene became a grey box on the television and in the
+   phone's flight strip.
+
+   So the colour stands on its own, and the glow is written as a literal alpha
+   instead of a mix. The literal is `--color-primary` from the theme block at
+   the top of this file; if that changes, this changes with it. */
 .scene {
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 45%, color-mix(in oklch, var(--color-primary) 8%, transparent), transparent 55%),
-    var(--color-base-300);
+  background-color: var(--color-base-300);
+  background-image: radial-gradient(
+    circle at 50% 45%,
+    oklch(80% 0.16 72 / 8%),
+    transparent 55%
+  );
 }
 
 /* Two star layers at different speeds. Cheap parallax, and it stops the scene
