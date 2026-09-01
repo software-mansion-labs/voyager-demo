@@ -62,6 +62,24 @@ defmodule StationWeb.CockpitLiveTest do
     :sys.resume(Process.whereis(name))
   end
 
+  test "an empty hold turns the button into a decision", %{conn: conn} do
+    {conn, name} = with_ship(conn)
+    {:ok, view, _html} = live(conn, ~p"/ship")
+
+    for _ <- 1..Cargo.hold_size(), do: Station.Ship.transfer(name)
+    :sys.get_state(Process.whereis(name))
+    send(view.pid, :refresh)
+
+    assert render(view) =~ "TAKE ON CARGO"
+
+    render_click(view, "resupply")
+    :sys.get_state(Process.whereis(name))
+    send(view.pid, :refresh)
+
+    assert render(view) =~ "TRANSFER CARGO"
+    assert view |> element("#hold-grid") |> render() =~ ~s(data-hold="#{Cargo.hold_size()}")
+  end
+
   test "a ship removed by ops takes its visitor back to registration", %{conn: conn} do
     {conn, name} = with_ship(conn)
     {:ok, view, _html} = live(conn, ~p"/ship")

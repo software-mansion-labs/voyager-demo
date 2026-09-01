@@ -23,10 +23,17 @@ defmodule Station.ShipTest do
     assert Metrics.get(:accepted) == 1
   end
 
-  test "an empty hold is refilled rather than stranding the visitor", %{ship: ship} do
+  test "an empty hold stays empty until its owner takes on cargo", %{ship: ship} do
     hold_size = Station.Cargo.hold_size()
 
-    for _ <- 1..hold_size, do: Ship.transfer(ship)
+    for _ <- 1..(hold_size + 3), do: Ship.transfer(ship)
+    drain(ship)
+
+    # The three presses past the last container died at the ramp: no refill
+    # happens on its own, and nothing shipped that was never aboard.
+    assert %{refills: 0, hold: 0, delivered: ^hold_size} = Ship.status(ship)
+
+    :ok = Ship.resupply(ship)
     drain(ship)
 
     assert %{refills: 1, hold: ^hold_size} = Ship.status(ship)

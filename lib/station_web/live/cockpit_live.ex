@@ -79,6 +79,11 @@ defmodule StationWeb.CockpitLive do
     end
   end
 
+  def handle_event("resupply", _params, socket) do
+    Ship.resupply(socket.assigns.ship)
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(:refresh, socket), do: {:noreply, refresh(socket)}
 
@@ -222,13 +227,22 @@ defmodule StationWeb.CockpitLive do
           </div>
         </section>
 
+        <%!-- An empty ship stays empty until its owner decides otherwise: the
+              same button changes job, so the decision is one thumb away and
+              the pause before it is the visitor's own. --%>
         <button
           type="button"
           id="transfer-button"
-          phx-click="transfer"
-          class="pixel-button shrink-0 bg-primary py-5 font-pixel text-base text-primary-content"
+          phx-click={if @hold == 0, do: "resupply", else: "transfer"}
+          class={[
+            "pixel-button shrink-0 py-5 font-pixel text-base",
+            if(@hold == 0,
+              do: "bg-secondary text-secondary-content",
+              else: "bg-primary text-primary-content"
+            )
+          ]}
         >
-          TRANSFER CARGO
+          {if @hold == 0, do: "TAKE ON CARGO", else: "TRANSFER CARGO"}
         </button>
 
         <p class={[
@@ -279,7 +293,7 @@ defmodule StationWeb.CockpitLive do
             this.port = this.el.querySelector("[data-flight-port]");
             this.tone = (this.el.querySelector(".scene-actor").className.match(/text-\S+/) || ["text-primary"])[0];
 
-            this.handleEvent("station:transferred", () => this.launch(true));
+            this.handleEvent("station:transferred", ({refilled}) => !refilled && this.launch(true));
             this.handleEvent("station:throttled", () => this.launch(false));
           },
 

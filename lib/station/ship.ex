@@ -37,10 +37,16 @@ defmodule Station.Ship do
 
   @doc "One press. One message into this ship's own mailbox."
   @spec transfer(atom()) :: :ok | {:error, :gone}
-  def transfer(name) do
+  def transfer(name), do: press(name, :transfer)
+
+  @doc "Takes on a fresh hold. A decision, not an automatism - see handle_cast."
+  @spec resupply(atom()) :: :ok | {:error, :gone}
+  def resupply(name), do: press(name, :resupply)
+
+  defp press(name, message) do
     case Process.whereis(name) do
       nil -> {:error, :gone}
-      pid -> GenServer.cast(pid, :transfer)
+      pid -> GenServer.cast(pid, message)
     end
   end
 
@@ -109,6 +115,13 @@ defmodule Station.Ship do
   end
 
   @impl true
+  def handle_cast(:transfer, %{hold: []} = state) do
+    # Presses queued behind the last container die quietly at the ramp: the
+    # hold does not refill itself. An empty ship is a decision waiting for the
+    # visitor - the button on the phone turns into TAKE ON CARGO.
+    {:noreply, %{state | last_press: now_ms()}, remaining(state)}
+  end
+
   def handle_cast(:transfer, state) do
     state = %{state | last_press: now_ms()}
 
@@ -119,6 +132,33 @@ defmodule Station.Ship do
 
     state = ship_one(state)
     {:noreply, state, remaining(state)}
+  end
+
+  def handle_cast(:resupply, %{hold: []} = state) do
+    state = %{state | last_press: now_ms()}
+
+    load_ms() > 0 && Process.sleep(load_ms())
+
+    Events.emit(
+      :refill,
+      "#{state.name} TOOK ON A FRESH LOAD OF #{String.upcase(state.cargo_type)}"
+    )
+
+    state = %{
+      state
+      | hold: Cargo.build_hold(state.cargo_type),
+        hold_count: state.hold_size,
+        refills: state.refills + 1
+    }
+
+    publish(state)
+    broadcast(state, true)
+    {:noreply, state, remaining(state)}
+  end
+
+  # Resupply with cargo still aboard is a stale press from a laggy phone.
+  def handle_cast(:resupply, state) do
+    {:noreply, %{state | last_press: now_ms()}, remaining(state)}
   end
 
   @impl true
@@ -147,38 +187,21 @@ defmodule Station.Ship do
         delivered: state.delivered + 1
     }
 
-    refills = state.refills
-    state = refill_if_empty(state)
     publish(state)
-
-    # The cockpit animates on this, not on the press: a crate flies when the
-    # container actually leaves the ship, which is after the ramp - so a backed
-    # up ship visibly works through its mailbox one flight at a time.
-    Phoenix.PubSub.broadcast(
-      Station.PubSub,
-      topic(state.slug),
-      {:shipped,
-       %{hold: state.hold_count, delivered: state.delivered, refilled?: state.refills > refills}}
-    )
-
+    broadcast(state, false)
     state
   end
 
-  defp refill_if_empty(%{hold: []} = state) do
-    Events.emit(
-      :refill,
-      "#{state.name} TOOK ON A FRESH LOAD OF #{String.upcase(state.cargo_type)}"
+  # The cockpit animates on this, not on the press: a crate flies when the
+  # container actually leaves the ship, which is after the ramp - so a backed
+  # up ship visibly works through its mailbox one flight at a time.
+  defp broadcast(state, refilled?) do
+    Phoenix.PubSub.broadcast(
+      Station.PubSub,
+      topic(state.slug),
+      {:shipped, %{hold: state.hold_count, delivered: state.delivered, refilled?: refilled?}}
     )
-
-    %{
-      state
-      | hold: Cargo.build_hold(state.cargo_type),
-        hold_count: state.hold_size,
-        refills: state.refills + 1
-    }
   end
-
-  defp refill_if_empty(state), do: state
 
   defp publish(state) do
     snapshot = %{
