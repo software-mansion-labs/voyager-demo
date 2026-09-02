@@ -275,7 +275,7 @@ defmodule StationWeb.CockpitLive do
 
         <footer class="flex shrink-0 items-center justify-between pt-1 font-mono text-[11px]">
           <a
-            href="https://github.com/software-mansion/voyager"
+            href="https://voyager.swmansion.com"
             class="underline text-base-content/45 hover:text-primary"
           >
             What is Voyager?
