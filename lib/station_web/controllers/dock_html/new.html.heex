@@ -3,7 +3,7 @@
 
 <div class="mx-auto flex min-h-screen w-full max-w-xl select-none flex-col gap-6 px-4 py-8">
   <header class="flex items-center gap-4">
-    <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-8 w-auto" />
+    <Sprites.voyager_logo class="h-8" />
     <h1 class="font-pixel text-lg text-primary">STATION</h1>
   </header>
 
@@ -74,10 +74,10 @@
 
   <a
     href="https://voyager.swmansion.com"
-    class="pixel-panel pixel-panel-accent flex items-center justify-between gap-4 p-4"
+    class="voyager-button flex items-center justify-between gap-4 px-4 py-3"
   >
-    <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-7 w-auto" />
-    <span class="font-pixel text-[10px] text-primary">WHAT IS VOYAGER?</span>
+    <Sprites.voyager_logo class="h-7" />
+    <span class="text-base">What is Voyager?</span>
   </a>
 
   <footer class="mt-auto flex flex-col gap-2 pt-4 font-mono text-[11px] text-base-content/45">

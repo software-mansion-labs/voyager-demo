@@ -182,6 +182,21 @@ body {
   }
 }
 
+/* The one thing on these screens that is not pixel art: a link out to Voyager,
+   drawn the way voyager.swmansion.com draws its own buttons - flat Voyager
+   blue, dark text, a one pixel ring and a soft glow, no radius. Deliberately
+   off-style, so the eye reads it as belonging to the product, not the game. */
+.voyager-button {
+  background-color: #94d0eb;
+  color: #06120f;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 0 0 1px rgb(190 225 245),
+    0 10px 40px -12px rgb(148 208 235 / 70%);
+}
+
 /* The big button. It has to feel like a physical switch: it drops onto its own
    shadow when pressed and there is no easing to smooth that over. */
 .pixel-button {

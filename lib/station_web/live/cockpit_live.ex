@@ -252,9 +252,9 @@ defmodule StationWeb.CockpitLive do
         <div class="grid shrink-0 grid-cols-2 gap-2">
           <a
             href="https://voyager.swmansion.com"
-            class="pixel-panel pixel-panel-accent flex items-center justify-center p-3"
+            class="voyager-button flex items-center justify-center p-3"
           >
-            <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-8 w-auto" />
+            <Sprites.voyager_logo class="h-8" />
           </a>
           <.link
             href={~p"/leave"}

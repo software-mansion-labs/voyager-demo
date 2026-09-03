@@ -140,7 +140,7 @@ defmodule StationWeb.StationOpsLive do
       <div class="tv crt relative flex h-screen w-screen flex-col gap-3 overflow-hidden bg-base-300 p-4">
         <header class="flex items-center justify-between gap-6">
           <div class="flex items-center gap-4">
-            <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-10 w-auto" />
+            <Sprites.voyager_logo class="h-10" />
             <h1 class="font-pixel text-xl text-primary">STATION</h1>
           </div>
         </header>

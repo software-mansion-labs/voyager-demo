@@ -16,6 +16,8 @@ defmodule StationWeb.Sprites do
 
   use Phoenix.Component
 
+  import Phoenix.HTML, only: [raw: 1]
+
   @doc "Cargo colour token for a cargo type, so one cargo means one colour everywhere."
   @spec cargo_color(String.t()) :: String.t()
   def cargo_color("ice"), do: "text-info"
@@ -865,6 +867,29 @@ defmodule StationWeb.Sprites do
     ~H"""
     <svg viewBox="0 0 64 32" class={["pixelated", @class]} aria-hidden="true" {@rest}>
       <use href="#sprite-station_hub" />
+    </svg>
+    """
+  end
+
+  # Not a sprite: the Voyager wordmark as shipped by voyager.swmansion.com, with
+  # its fills swapped to currentColor so it can sit white on the station and
+  # dark on a Voyager-blue button. Inlined so the colour can follow the text.
+  @voyager_logo_path "priv/static/images/logo-voyager.svg"
+  @external_resource @voyager_logo_path
+  @voyager_logo @voyager_logo_path
+                |> File.read!()
+                |> then(&Regex.run(~r/<svg[^>]*>(.*)<\/svg>/s, &1, capture: :all_but_first))
+                |> hd()
+
+  attr :class, :any, default: "h-8"
+  attr :rest, :global
+
+  def voyager_logo(assigns) do
+    assigns = assign(assigns, :paths, @voyager_logo)
+
+    ~H"""
+    <svg viewBox="0 0 351 90" class={["w-auto", @class]} role="img" aria-label="Voyager" {@rest}>
+      {raw(@paths)}
     </svg>
     """
   end
