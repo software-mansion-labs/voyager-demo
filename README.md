@@ -12,6 +12,7 @@ Two screens make the demo:
 | --------------- | -------------------------- | ---------------------------------- |
 | Laptop          | Voyager, attached over SSH | **the truth**                      |
 | Television      | `/tv`                      | **the narrative**                  |
+| Leaderboard     | `/leaderboard`             | the ETS table, on its own screen   |
 | Visitor's phone | `/` then `/ship`           | the thing worth pressing           |
 | Booth staff     | `/ops/<token>`             | the two switches that are the demo |
 
