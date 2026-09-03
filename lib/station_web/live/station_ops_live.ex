@@ -23,7 +23,6 @@ defmodule StationWeb.StationOpsLive do
   alias Station.DockingBay
   alias Station.Events
   alias Station.InspectionCrew
-  alias Station.Leaderboard
   alias Station.Metrics
   alias Station.OpsPanel
   alias Station.Ship
@@ -85,8 +84,6 @@ defmodule StationWeb.StationOpsLive do
     |> assign(:congested?, congested?)
     |> assign(:capacity, DockingBay.capacity())
     |> assign(:warehouse_capacity, capacity)
-    |> assign(:board, Leaderboard.top(12))
-    |> assign(:board_size, Leaderboard.size())
     |> assign(:inspectors, InspectionCrew.size())
     |> assign(:settings, OpsPanel.settings())
     |> assign(:processes, Metrics.get(:process_count))
@@ -278,65 +275,13 @@ defmodule StationWeb.StationOpsLive do
           </div>
 
           <div class="flex min-h-0 flex-col gap-3">
-            <%!-- The leaderboard, styled as what it is: a dump of an ETS table. --%>
-            <section class="pixel-panel flex min-h-0 flex-1 flex-col gap-2 p-3">
-              <div class="flex items-baseline justify-between">
-                <h2 class="font-pixel text-[10px] text-success">:station_leaderboard</h2>
-                <span class="font-mono text-[11px] text-base-content/45">{@board_size} rows</span>
-              </div>
-
-              <table class="w-full table-fixed font-mono text-[11px]">
-                <colgroup>
-                  <col class="w-[52%]" />
-                  <col class="w-[22%]" />
-                  <col class="w-[15%]" />
-                  <col class="w-[11%]" />
-                </colgroup>
-                <thead class="text-base-content/40">
-                  <tr class="border-b-2 border-base-300">
-                    <th class="py-1 text-left font-normal">ship</th>
-                    <th class="py-1 text-left font-normal">cargo</th>
-                    <th class="py-1 text-right font-normal">boxes</th>
-                    <th class="py-1 text-right font-normal">last</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    :for={{row, index} <- Enum.with_index(@board, 1)}
-                    class="border-b border-base-300/60"
-                  >
-                    <td class="truncate py-1 pr-2 text-base-content/80">
-                      <span class="text-base-content/35">{index}.</span> {row.ship}
-                    </td>
-                    <td class={["truncate py-1 pr-2", Sprites.cargo_color(row.cargo)]}>
-                      {row.cargo}
-                    </td>
-                    <td class="py-1 text-right text-primary">{format_count(row.containers)}</td>
-                    <td class="py-1 text-right text-base-content/40">
-                      {format_ago(row.last_delivery)}
-                    </td>
-                  </tr>
-                  <tr :if={@board == []}>
-                    <td colspan="4" class="py-4 text-center text-base-content/35">
-                      no deliveries yet - the board only counts visitors
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <p class="mt-auto font-mono text-[10px] leading-relaxed text-base-content/40">
-                Process state dies with the process. This table survives it, and its
-                snapshot on disk survives the node. Three levels, one story.
-              </p>
-            </section>
-
             <%!-- The way in. It is on the television rather than only on the
                   desk because the queue behind the booth can read a screen from
                   the aisle, and that is where the next ship comes from. --%>
-            <section class="pixel-panel flex shrink-0 items-center gap-3 p-3">
-              <div class="w-40 shrink-0 bg-white p-1">{raw(@dock_qr)}</div>
-              <div class="flex min-w-0 flex-col gap-1">
-                <p class="font-pixel text-[10px] leading-tight text-primary">
+            <section class="pixel-panel flex flex-1 flex-col items-center justify-center gap-4 p-4 text-center">
+              <div class="w-full max-w-64 bg-white p-2">{raw(@dock_qr)}</div>
+              <div class="flex min-w-0 flex-col gap-2">
+                <p class="font-pixel text-xs leading-relaxed text-primary">
                   SCAN TO<br />DOCK A SHIP
                 </p>
                 <p class="font-mono text-[11px] leading-tight text-base-content/60">{@dock_url}</p>

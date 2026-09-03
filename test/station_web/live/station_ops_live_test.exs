@@ -1,9 +1,7 @@
 defmodule StationWeb.StationOpsLiveTest do
   use StationWeb.ConnCase, async: false
 
-  alias Station.Cargo
   alias Station.Events
-  alias Station.Warehouse
 
   test "the television names every docked ship", %{conn: conn} do
     {:ok, _} = Station.DockingBay.dock("Nostromo", "ore")
@@ -13,20 +11,6 @@ defmodule StationWeb.StationOpsLiveTest do
 
     assert html =~ "ship_nostromo"
     assert html =~ "ship_rocinante"
-    assert html =~ "station_leaderboard"
-  end
-
-  test "the board only counts visitors, never the background fleet", %{conn: conn} do
-    [container] = Cargo.build_hold("ore", 1)
-
-    Warehouse.accept("nostromo", container)
-    Warehouse.accept(nil, container)
-    :sys.get_state(Warehouse)
-
-    {:ok, _view, html} = live(conn, ~p"/tv")
-
-    assert html =~ "nostromo"
-    assert Station.Leaderboard.size() == 1
   end
 
   test "the television carries the way in, as a code and as a line to type", %{conn: conn} do

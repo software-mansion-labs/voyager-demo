@@ -27,6 +27,7 @@ defmodule StationWeb.Router do
     live_session :ship do
       live "/ship", CockpitLive, :show
       live "/tv", StationOpsLive, :show
+      live "/leaderboard", LeaderboardLive, :show
     end
   end
 
