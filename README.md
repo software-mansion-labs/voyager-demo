@@ -1,4 +1,4 @@
-# Station VOY-1
+# Voyager Station
 
 A booth demo for ElixirConf. The BEAM node _is_ a space station: visitors scan a
 QR code, register a ship, and their ship joins this application's supervision

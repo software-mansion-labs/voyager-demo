@@ -55,7 +55,6 @@ export const StationScene = {
     this.actors = this.el.querySelector("[data-scene-actors]");
     this.bay = this.el.querySelector("[data-scene-bay]");
     this.queueLane = this.el.querySelector("[data-scene-queue]");
-    this.queueLabel = this.el.querySelector("[data-scene-queue-label]");
     this.ports = {
       in: this.el.querySelector('[data-scene-port="in"]'),
       out: this.el.querySelector('[data-scene-port="out"]'),
@@ -96,7 +95,7 @@ export const StationScene = {
     this.syncShips(state.ships);
     this.syncHaulers(state.haulers);
     this.paintBay(state.stored, state.congested);
-    this.paintQueue(state.queue, state.queueCrates, state.congested);
+    this.paintQueue(state.queueCrates, state.congested);
 
     state.ships.forEach((ship) => this.launchCrates(ship));
     this.launchPickups(state.haulerDelta, state.haulers);
@@ -350,8 +349,8 @@ export const StationScene = {
 
   // Containers that arrived and are waiting outside the door. This is
   // message_queue_len and nothing else: one crate per waiting message until the
-  // pile runs out of room, and then the number carries it.
-  paintQueue(queue, crates, congested) {
+  // pile runs out of room, and then the WH QUEUE readout carries the number.
+  paintQueue(crates, congested) {
     const wanted = Math.min(crates, MAX_QUEUE_CRATES);
 
     while (this.queueLane.children.length > wanted) {
@@ -367,11 +366,6 @@ export const StationScene = {
 
     this.queueLane.classList.toggle("text-error", congested);
     this.queueLane.classList.toggle("text-warning", !congested);
-
-    this.queueLabel.textContent = `MESSAGE QUEUE ${groupDigits(queue)}`;
-    this.queueLabel.classList.toggle("text-error", congested);
-    this.queueLabel.classList.toggle("animate-blink", congested);
-    this.queueLabel.classList.toggle("text-base-content/60", !congested);
   },
 
   // --- helpers -----------------------------------------------------------
@@ -413,11 +407,6 @@ export const StationScene = {
     this.timers.add(timer);
   },
 };
-
-// Thousands separated with a thin space, to match the server's formatter.
-function groupDigits(value) {
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => {

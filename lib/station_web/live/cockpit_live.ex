@@ -12,7 +12,6 @@ defmodule StationWeb.CockpitLive do
   use StationWeb, :live_view
 
   alias Station.Cargo
-  alias Station.DockingBay
   alias Station.Leaderboard
   alias Station.Ship
   alias Station.ShipNames
@@ -37,10 +36,9 @@ defmodule StationWeb.CockpitLive do
         end
 
         socket
-        |> assign(:page_title, "#{ship} · STATION VOY-1")
+        |> assign(:page_title, "#{ship} · VOYAGER STATION")
         |> assign(:ship, ship)
         |> assign(:hold_size, Cargo.hold_size())
-        |> assign(:flash_note, nil)
         |> refresh()
         |> ok()
     end
@@ -57,7 +55,6 @@ defmodule StationWeb.CockpitLive do
     cond do
       Ship.queue_len(ship) >= queue_cap() ->
         socket
-        |> assign(:flash_note, :backed_up)
         |> push_event("station:throttled", %{})
         |> noreply()
 
@@ -66,9 +63,7 @@ defmodule StationWeb.CockpitLive do
         # broadcast, once the container has really left the ramp.
         case Ship.transfer(ship) do
           :ok ->
-            socket
-            |> assign(:flash_note, nil)
-            |> noreply()
+            noreply(socket)
 
           {:error, :gone} ->
             socket
@@ -91,7 +86,6 @@ defmodule StationWeb.CockpitLive do
     socket
     |> assign(:hold, shipped.hold)
     |> assign(:delivered, shipped.delivered)
-    |> assign(:flash_note, if(shipped.refilled?, do: :refilled, else: socket.assigns.flash_note))
     |> push_event("station:transferred", %{refilled: shipped.refilled?})
     |> noreply()
   end
@@ -115,8 +109,6 @@ defmodule StationWeb.CockpitLive do
         |> assign(:stats, stats)
         |> assign(:congested?, stats.queue >= congestion_threshold())
         |> assign(:rank, Leaderboard.rank(status.slug))
-        |> assign(:fleet_size, DockingBay.count())
-        |> assign(:atoms, DockingBay.atom_budget())
     end
   end
 
@@ -137,7 +129,7 @@ defmodule StationWeb.CockpitLive do
             and the button never leaves the reachable half of the screen. The
             hold grid is the one flexible element - it absorbs whatever height
             this particular phone has to give. --%>
-      <div class="mx-auto flex h-dvh w-full max-w-md flex-col gap-2 overflow-y-auto overscroll-contain px-4 py-3">
+      <div class="mx-auto flex h-dvh w-full max-w-md select-none flex-col gap-2 overflow-y-auto overscroll-contain px-4 py-3">
         <header class={[
           "pixel-panel flex items-center gap-3 p-3",
           if(@congested?, do: "border-error/70", else: "pixel-panel-accent")
@@ -245,13 +237,6 @@ defmodule StationWeb.CockpitLive do
           {if @hold == 0, do: "TAKE ON CARGO", else: "TRANSFER CARGO"}
         </button>
 
-        <p class={[
-          "flex min-h-8 items-center justify-center text-center font-mono text-[11px]",
-          note_tone(@flash_note)
-        ]}>
-          {note_text(@flash_note, @status.cargo_type)}
-        </p>
-
         <section class="grid grid-cols-3 gap-2">
           <.readout label="DELIVERED" value={format_count(@delivered)} tone="text-success" />
           <.readout
@@ -262,28 +247,22 @@ defmodule StationWeb.CockpitLive do
           <.readout label="MEMORY" value={format_bytes(@stats.memory)} tone="text-primary" />
         </section>
 
-        <%!-- Never clipped: a sentence cut in half reads as a bug, so the
-              explainer keeps its whole height and the hold grid above is what
-              absorbs a short viewport - its bars just draw thinner. --%>
-        <section class="pixel-panel flex shrink-0 flex-col gap-2 p-3">
-          <p class="font-pixel text-[9px] text-base-content/50">WHAT JUST HAPPENED</p>
-          <p class="font-mono text-[11px] leading-snug text-base-content/60">
-            Every press is a real message to <span class="text-primary">Station.Warehouse</span>. Look at the laptop: this ship's
-            memory is falling, the warehouse's is rising.
-          </p>
-        </section>
-
-        <footer class="flex shrink-0 items-center justify-between pt-1 font-mono text-[11px]">
+        <%!-- The two exits: Voyager, where the visitor goes to check the
+              numbers, and the way off the station. --%>
+        <div class="grid shrink-0 grid-cols-2 gap-2">
           <a
             href="https://voyager.swmansion.com"
-            class="underline text-base-content/45 hover:text-primary"
+            class="pixel-panel pixel-panel-accent flex items-center justify-center p-3"
           >
-            What is Voyager?
+            <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-8 w-auto" />
           </a>
-          <.link href={~p"/leave"} class="underline text-base-content/45 hover:text-error">
+          <.link
+            href={~p"/leave"}
+            class="pixel-panel pixel-panel-danger flex items-center justify-center p-3 font-pixel text-sm text-error"
+          >
             UNDOCK
           </.link>
-        </footer>
+        </div>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Flight">
@@ -374,14 +353,4 @@ defmodule StationWeb.CockpitLive do
 
   defp queue_tone(true), do: "text-error"
   defp queue_tone(false), do: "text-base-content"
-
-  defp note_tone(:backed_up), do: "text-warning"
-  defp note_tone(:refilled), do: "text-success"
-  defp note_tone(_), do: "text-base-content/40"
-
-  defp note_text(:backed_up, _),
-    do: "RAMP BACKED UP - your ship's mailbox is full, watch it drain in Voyager."
-
-  defp note_text(:refilled, type), do: "FRESH LOAD OF #{String.upcase(type)} TAKEN ON."
-  defp note_text(_, _), do: "one press · one message · one container"
 end

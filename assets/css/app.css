@@ -17,7 +17,7 @@
   themes: false;
 }
 
-/* Station VOY-1 palette.
+/* Voyager Station palette.
 
    Six colours per scene, no more: the pixel art falls apart the moment it gets
    a gradient. They mean something and they mean it everywhere - ships are cyan,
@@ -175,6 +175,11 @@ body {
     border-color: color-mix(in oklch, var(--color-primary) 60%, transparent);
     box-shadow: 4px 4px 0 0 color-mix(in oklch, var(--color-primary) 30%, transparent);
   }
+
+  .pixel-panel-danger {
+    border-color: color-mix(in oklch, var(--color-error) 60%, transparent);
+    box-shadow: 4px 4px 0 0 color-mix(in oklch, var(--color-error) 30%, transparent);
+  }
 }
 
 /* The big button. It has to feel like a physical switch: it drops onto its own
@@ -246,6 +251,13 @@ body {
 
 .animate-scan {
   animation: pixel-scan 6s steps(30, end) infinite;
+}
+
+/* The television is read from across the aisle. Every size on that screen is
+   in rem, so one root font-size scales the whole thing; the phone and the
+   desk stay at the browser default. */
+html:has(.tv) {
+  font-size: 24px;
 }
 
 /* Faint scanlines over the television scene. Off for anyone who asked the OS

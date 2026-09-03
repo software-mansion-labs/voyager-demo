@@ -16,9 +16,9 @@ defmodule StationWeb.StationComponents do
   def readout(assigns) do
     ~H"""
     <div class={["pixel-panel flex flex-col gap-1 p-3", @class]}>
-      <span class="font-pixel text-[9px] text-base-content/50">{@label}</span>
+      <span class="font-pixel text-[0.5625rem] text-base-content/50">{@label}</span>
       <span class={["font-pixel text-sm tabular-nums", @tone]}>{@value}</span>
-      <span :if={@hint} class="font-mono text-[10px] text-base-content/40">{@hint}</span>
+      <span :if={@hint} class="font-mono text-[0.625rem] text-base-content/40">{@hint}</span>
     </div>
     """
   end

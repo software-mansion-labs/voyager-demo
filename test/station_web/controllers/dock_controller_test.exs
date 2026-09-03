@@ -6,7 +6,7 @@ defmodule StationWeb.DockControllerTest do
   test "the registration screen offers every cargo type, cheapest first", %{conn: conn} do
     html = conn |> get(~p"/") |> html_response(200)
 
-    assert html =~ "STATION VOY-1"
+    assert html =~ "VOYAGER STATION"
     assert html =~ ~s(id="dock-form")
 
     for type <- Station.Cargo.types() do

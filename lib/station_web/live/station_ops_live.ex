@@ -21,52 +21,34 @@ defmodule StationWeb.StationOpsLive do
 
   alias Station.Dispatcher
   alias Station.DockingBay
-  alias Station.Events
-  alias Station.InspectionCrew
-  alias Station.Metrics
-  alias Station.OpsPanel
   alias Station.Ship
   alias Station.Warehouse
 
   @refresh 1_000
-  @log_size 7
+  @voyager_url "https://voyager.swmansion.com"
   @queue_crates 16
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       :timer.send_interval(@refresh, :refresh)
-      Events.subscribe()
     end
 
     url = Station.Booth.dock_url()
 
     socket
-    |> assign(:log, [])
-    |> assign(:page_title, "STATION OPS · STATION VOY-1")
+    |> assign(:page_title, "STATION OPS · VOYAGER STATION")
     |> assign(:previous, nil)
     |> assign(:dock_url, display_url(url))
     |> assign(:dock_qr, qr(url))
+    |> assign(:voyager_url, display_url(@voyager_url))
+    |> assign(:voyager_qr, qr(@voyager_url))
     |> refresh()
     |> ok()
   end
 
   @impl true
   def handle_info(:refresh, socket), do: {:noreply, refresh(socket)}
-
-  def handle_info({:station_event, event}, socket) do
-    {:noreply, assign(socket, :log, log(socket.assigns.log, event))}
-  end
-
-  # The same line arriving twice in a row becomes one line with a counter. A
-  # television that scrolls the same sentence eight times reads as broken.
-  defp log([%{text: text} = last | rest], %{text: text}) do
-    [%{last | repeats: last.repeats + 1} | rest]
-  end
-
-  defp log(entries, event) do
-    Enum.take([Map.put(event, :repeats, 1) | entries], @log_size)
-  end
 
   defp refresh(socket) do
     stats = Warehouse.stats()
@@ -84,10 +66,6 @@ defmodule StationWeb.StationOpsLive do
     |> assign(:congested?, congested?)
     |> assign(:capacity, DockingBay.capacity())
     |> assign(:warehouse_capacity, capacity)
-    |> assign(:inspectors, InspectionCrew.size())
-    |> assign(:settings, OpsPanel.settings())
-    |> assign(:processes, Metrics.get(:process_count))
-    |> assign(:atoms, DockingBay.atom_budget())
     |> assign(:scene, scene)
     |> assign(:previous, previous)
   end
@@ -139,7 +117,6 @@ defmodule StationWeb.StationOpsLive do
       ships: scene_ships,
       haulers: fleet.haulers,
       haulerDelta: delta(previous && previous.collected, stats.collected),
-      queue: stats.queue,
       queueCrates: min(stats.queue, @queue_crates),
       stored: safe_ratio(stats.stored, capacity),
       congested: congested?
@@ -160,33 +137,15 @@ defmodule StationWeb.StationOpsLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="crt relative flex h-screen w-screen flex-col gap-3 overflow-hidden bg-base-300 p-4">
+      <div class="tv crt relative flex h-screen w-screen flex-col gap-3 overflow-hidden bg-base-300 p-4">
         <header class="flex items-center justify-between gap-6">
-          <div class="flex items-center gap-3">
-            <Sprites.warehouse class="size-10 text-primary" />
-            <h1 class="font-pixel text-xl text-primary">STATION VOY-1</h1>
-          </div>
-
-          <div class="flex items-center gap-2 font-pixel text-[10px]">
-            <span class={[
-              "border-2 px-3 py-2",
-              if(@settings.warehouse_mode == :single_clerk,
-                do: "border-warning text-warning",
-                else: "border-success text-success"
-              )
-            ]}>
-              {@settings.warehouse_mode |> to_string() |> String.upcase() |> String.replace("_", " ")}
-            </span>
-            <span class="border-2 border-base-content/20 px-3 py-2 text-base-content/60">
-              {@inspectors} INSPECTORS
-            </span>
-            <span class="border-2 border-base-content/20 px-3 py-2 text-base-content/60">
-              {format_count(@processes)} PROCESSES
-            </span>
+          <div class="flex items-center gap-4">
+            <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-10 w-auto" />
+            <h1 class="font-pixel text-xl text-primary">STATION</h1>
           </div>
         </header>
 
-        <div class="grid min-h-0 flex-1 grid-cols-[1fr_20rem] gap-3">
+        <div class="grid min-h-0 flex-1 grid-cols-[1fr_14rem] gap-3">
           <div class="flex min-h-0 flex-col gap-3">
             <%!-- The scene. Every actor inside is created by the hook from the
                   snapshot on data-scene, so LiveView leaves the children alone. --%>
@@ -200,13 +159,6 @@ defmodule StationWeb.StationOpsLive do
               <div class="scene-stars scene-stars-far"></div>
               <div class="scene-stars scene-stars-near"></div>
 
-              <span class="absolute left-3 top-3 font-pixel text-[10px] text-secondary">
-                ARRIVALS
-              </span>
-              <span class="absolute right-3 top-3 font-pixel text-[10px] text-success">
-                OUTBOUND
-              </span>
-
               <%!-- The station itself, and the bay window the hook fills with
                     whatever the warehouse is holding. --%>
               <%!-- The ports light up as cargo lands, so the eye is pulled to
@@ -217,6 +169,9 @@ defmodule StationWeb.StationOpsLive do
               </span>
 
               <div class="scene-actor" style="left: 50%; top: 50%; width: 48%">
+                <span class="absolute -top-8 left-1/2 -translate-x-1/2 font-pixel text-sm text-primary/70">
+                  WAREHOUSE
+                </span>
                 <Sprites.station_hub class="w-full text-primary" />
                 <div
                   data-scene-bay
@@ -227,49 +182,41 @@ defmodule StationWeb.StationOpsLive do
               </div>
 
               <%!-- The pile outside the bay door: message_queue_len, drawn as
-                    the queue it is. Both the crates and the caption belong to
-                    the hook - everything in here is behind phx-update="ignore",
-                    so anything the server rendered would freeze at mount. --%>
-              <div class="absolute bottom-4 left-1/2 flex w-1/2 -translate-x-1/2 flex-col items-center gap-2">
-                <div
-                  data-scene-queue
-                  class="flex min-h-[1.75rem] w-full flex-wrap items-end justify-center gap-[3px] text-warning"
-                >
-                </div>
-                <p data-scene-queue-label class="font-pixel text-sm text-base-content/60"></p>
+                    the queue it is. The crates belong to the hook - everything
+                    in here is behind phx-update="ignore", so anything the
+                    server rendered would freeze at mount. The number lives in
+                    the WAREHOUSE QUEUE readout underneath. --%>
+              <div
+                data-scene-queue
+                class="absolute bottom-4 left-1/2 flex min-h-[1.75rem] w-1/2 -translate-x-1/2 flex-wrap items-end justify-center gap-[3px] text-warning"
+              >
               </div>
 
               <div data-scene-actors class="absolute inset-0"></div>
             </section>
 
-            <section class="grid grid-cols-5 gap-2">
+            <section class="grid grid-cols-4 gap-2">
               <.readout
                 label="DOCKED"
                 value={"#{length(@ships)}/#{@capacity}"}
                 tone="text-secondary"
               />
               <.readout
-                label="WH QUEUE"
+                label="WAREHOUSE QUEUE"
                 value={format_count(@stats.queue)}
                 tone={if(@congested?, do: "text-error", else: "text-base-content")}
               />
               <.readout
-                label="IN STATE"
+                label="WAREHOUSE STATE"
                 value={format_count(@stats.stored)}
                 hint={"of #{format_count(@warehouse_capacity)}"}
                 tone="text-primary"
               />
               <.readout
-                label="WH MEMORY"
+                label="WAREHOUSE MEMORY"
                 value={format_bytes(@stats.memory)}
                 hint={"#{format_count(@stats.dropped)} jettisoned"}
                 tone="text-primary"
-              />
-              <.readout
-                label="HAULED AWAY"
-                value={format_count(@stats.collected)}
-                hint={"#{@fleet.haulers} haulers"}
-                tone="text-success"
               />
             </section>
           </div>
@@ -278,41 +225,37 @@ defmodule StationWeb.StationOpsLive do
             <%!-- The way in. It is on the television rather than only on the
                   desk because the queue behind the booth can read a screen from
                   the aisle, and that is where the next ship comes from. --%>
-            <section class="pixel-panel flex flex-1 flex-col items-center justify-center gap-4 p-4 text-center">
-              <div class="w-full max-w-64 bg-white p-2">{raw(@dock_qr)}</div>
+            <section class="pixel-panel flex flex-col items-center gap-3 p-3 text-center">
+              <div class="w-full bg-white p-2">
+                {raw(@dock_qr)}
+              </div>
               <div class="flex min-w-0 flex-col gap-2">
                 <p class="font-pixel text-xs leading-relaxed text-primary">
                   SCAN TO<br />DOCK A SHIP
                 </p>
-                <p class="font-mono text-[11px] leading-tight text-base-content/60">{@dock_url}</p>
+                <p class="font-mono text-[0.6875rem] leading-tight text-base-content/60">
+                  {@dock_url}
+                </p>
+              </div>
+            </section>
+
+            <section class="pixel-panel flex flex-col items-center gap-3 p-3 text-center">
+              <div class="w-full bg-white p-2">
+                {raw(@voyager_qr)}
+              </div>
+              <div class="flex min-w-0 flex-col gap-2">
+                <p class="font-pixel text-xs leading-relaxed text-secondary">
+                  CHECK OUR<br />WEBSITE
+                </p>
+                <p class="font-mono text-[0.6875rem] leading-tight text-base-content/60">
+                  {@voyager_url}
+                </p>
               </div>
             </section>
           </div>
         </div>
-
-        <footer class="pixel-panel flex h-16 items-center gap-4 overflow-hidden p-3">
-          <span class="font-pixel text-[9px] text-base-content/50">LOG</span>
-          <ul class="flex min-w-0 flex-1 flex-col justify-center gap-[2px]">
-            <li
-              :for={event <- Enum.take(@log, 3)}
-              class={["truncate font-mono text-[11px]", event_tone(event.level)]}
-            >
-              {event.text}<span :if={event.repeats > 1} class="opacity-60">&nbsp;x{event.repeats}</span>
-            </li>
-            <li :if={@log == []} class="font-mono text-[11px] text-base-content/35">
-              station nominal
-            </li>
-          </ul>
-          <span class="shrink-0 font-mono text-[11px] text-base-content/40">
-            {@atoms.used} {if @atoms.used == 1, do: "atom", else: "atoms"} minted · never freed
-          </span>
-        </footer>
       </div>
     </Layouts.app>
     """
   end
-
-  defp event_tone(:error), do: "text-error"
-  defp event_tone(:warning), do: "text-warning"
-  defp event_tone(_), do: "text-base-content/65"
 end

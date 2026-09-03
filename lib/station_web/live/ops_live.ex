@@ -33,7 +33,7 @@ defmodule StationWeb.OpsLive do
     end
 
     socket
-    |> assign(:page_title, "OPS · STATION VOY-1")
+    |> assign(:page_title, "OPS · VOYAGER STATION")
     |> assign(:token, token)
     |> assign(:log, [])
     |> refresh()
