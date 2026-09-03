@@ -1,16 +1,10 @@
 <Sprites.defs />
 <Layouts.flash_group flash={@flash} />
 
-<div class="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 px-4 py-8">
+<div class="mx-auto flex min-h-screen w-full max-w-xl select-none flex-col gap-6 px-4 py-8">
   <header class="flex items-center gap-4">
-    <Sprites.warehouse class="size-14 shrink-0 text-primary" />
-    <div>
-      <h1 class="font-pixel text-lg text-primary">STATION VOY-1</h1>
-      <p class="mt-1 text-xs text-base-content/60">
-        A BEAM node with a loading dock. Register a ship and it joins the
-        supervision tree as a named process.
-      </p>
-    </div>
+    <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-8 w-auto" />
+    <h1 class="font-pixel text-lg text-primary">STATION</h1>
   </header>
 
   <div :if={@error} class="pixel-panel border-error/60 p-3 font-pixel text-[10px] text-error">
@@ -33,18 +27,10 @@
         placeholder="Millennium Falcon"
         class="mt-2 w-full border-2 border-base-300 bg-base-300 px-3 py-3 font-mono text-base text-base-content outline-none focus:border-primary"
       />
-      <p class="mt-2 text-xs text-base-content/50">
-        Becomes a registered process name, so this is the string you will hunt
-        for on the big screen. Letters and numbers, up to {Station.ShipNames.max_length()} characters.
-      </p>
     </section>
 
     <section class="flex flex-col gap-3">
       <span class="font-pixel text-[10px] text-primary">CARGO TYPE</span>
-      <p class="-mt-2 text-xs text-base-content/50">
-        Not decoration. Each cargo has its own container size and its own
-        inspection cost, and both are visible in Voyager.
-      </p>
 
       <div class="grid grid-cols-2 gap-3">
         <label :for={cargo <- @cargo_types} class="cursor-pointer">
@@ -66,7 +52,6 @@
               <Sprites.crate_small class={["size-7", Sprites.cargo_color(cargo.value)]} />
               <span class="font-pixel text-[10px] leading-tight">{cargo.label}</span>
             </div>
-            <p class="text-xs text-base-content/60">{cargo.blurb}</p>
             <dl class="mt-auto grid grid-cols-2 gap-x-2 font-mono text-[10px] text-base-content/45">
               <dt>size</dt>
               <dd class="text-right">{format_bytes(cargo.bytes)}</dd>
@@ -87,20 +72,17 @@
     </button>
   </.form>
 
-  <footer class="mt-auto flex flex-col gap-3 pt-4 font-mono text-[11px] text-base-content/45">
+  <a
+    href="https://voyager.swmansion.com"
+    class="pixel-panel pixel-panel-accent flex items-center justify-between gap-4 p-4"
+  >
+    <img src={~p"/images/logo-voyager.svg"} alt="Voyager" class="h-7 w-auto" />
+    <span class="font-pixel text-[10px] text-primary">WHAT IS VOYAGER?</span>
+  </a>
+
+  <footer class="mt-auto flex flex-col gap-2 pt-4 font-mono text-[11px] text-base-content/45">
     <div class="flex items-center justify-between gap-4">
       <span>DOCKED {@docked}/{@capacity}</span>
-      <span>ATOMS MINTED {@atoms.used}/{@atoms.budget}</span>
-    </div>
-    <p>
-      Every ship name really does become an atom, and the atom table really
-      never shrinks. That is the point: you are about to see the counter move,
-      which is exactly why nobody makes atoms out of user input in production.
-    </p>
-    <div class="flex gap-4">
-      <a href="https://voyager.swmansion.com" class="underline hover:text-primary">
-        What is Voyager?
-      </a>
       <.link navigate={~p"/tv"} class="underline hover:text-primary">Station Ops screen</.link>
     </div>
   </footer>

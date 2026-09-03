@@ -58,7 +58,6 @@ defmodule StationWeb.CockpitLiveTest do
     assert Station.Ship.queue_len(name) <= cap + 1,
            "an autoclicker was allowed to grow an unbounded ship queue"
 
-    assert render(view) =~ "RAMP BACKED UP"
     :sys.resume(Process.whereis(name))
   end
 

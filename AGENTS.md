@@ -436,7 +436,7 @@ And **never** do this:
 
 <!-- usage-rules-end -->
 
-## Station VOY-1 conventions
+## Voyager Station conventions
 
 This is a booth demo, not a product. Read `README.md` and `docs/concept.md`
 first - most of what looks odd here is deliberate and the reason is written

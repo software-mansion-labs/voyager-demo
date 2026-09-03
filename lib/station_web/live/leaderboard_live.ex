@@ -18,7 +18,7 @@ defmodule StationWeb.LeaderboardLive do
     if connected?(socket), do: :timer.send_interval(@refresh, :refresh)
 
     socket
-    |> assign(:page_title, "LEADERBOARD · STATION VOY-1")
+    |> assign(:page_title, "LEADERBOARD · VOYAGER STATION")
     |> refresh()
     |> ok()
   end
@@ -41,7 +41,7 @@ defmodule StationWeb.LeaderboardLive do
         <header class="flex items-center justify-between gap-6">
           <div class="flex items-center gap-3">
             <Sprites.warehouse class="size-10 text-primary" />
-            <h1 class="font-pixel text-xl text-primary">STATION VOY-1</h1>
+            <h1 class="font-pixel text-xl text-primary">VOYAGER STATION</h1>
           </div>
           <span class="border-2 border-base-content/20 px-3 py-2 font-pixel text-[10px] text-base-content/60">
             {format_count(@total_containers)} CONTAINERS
@@ -94,11 +94,6 @@ defmodule StationWeb.LeaderboardLive do
               </tbody>
             </table>
           </div>
-
-          <p class="mt-auto font-mono text-xs leading-relaxed text-base-content/40">
-            Process state dies with the process. This table survives it, and its
-            snapshot on disk survives the node. Three levels, one story.
-          </p>
         </section>
       </div>
     </Layouts.app>

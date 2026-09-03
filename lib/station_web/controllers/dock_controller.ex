@@ -77,13 +77,12 @@ defmodule StationWeb.DockController do
 
   defp render_form(conn, params, error) do
     conn
-    |> assign(:page_title, "REGISTER YOUR SHIP · STATION VOY-1")
+    |> assign(:page_title, "REGISTER YOUR SHIP · VOYAGER STATION")
     |> assign(:form, to_form(params, as: :ship))
     |> assign(:error, error)
     |> assign(:cargo_types, cargo_options())
     |> assign(:docked, DockingBay.count())
     |> assign(:capacity, DockingBay.capacity())
-    |> assign(:atoms, DockingBay.atom_budget())
     |> render(:new)
   end
 
@@ -94,7 +93,6 @@ defmodule StationWeb.DockController do
       %{
         value: type,
         label: preset.label,
-        blurb: preset.blurb,
         bytes: Cargo.container_bytes(type),
         rounds: preset.inspection_rounds
       }
