@@ -58,8 +58,8 @@ cp .env.example .env   # fill in the secrets
 docker compose up -d --build
 ```
 
-The container listens on plain HTTP behind a TLS-terminating reverse proxy that
-sets `X-Forwarded-Proto`. The leaderboard lives in the `leaderboard` volume.
+Caddy answers on 80/443 with a Let's Encrypt certificate for `PHX_HOST` and
+proxies to the station. The leaderboard lives in the `leaderboard` volume.
 EPMD and one fixed distribution port are published on the host's loopback only,
 so Voyager attaches exactly as it would to a bare release: an SSH tunnel to the
 host. Everything else is in `docker-compose.yml`.
