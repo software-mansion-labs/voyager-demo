@@ -46,16 +46,4 @@ defmodule StationWeb.ConnCase do
     conn = Plug.Test.init_test_session(conn, ship: Station.ShipNames.to_slug(registered))
     {conn, registered}
   end
-
-  @doc "Credentials for the ops panel, which sits behind basic auth."
-  def ops_auth(conn) do
-    Plug.Conn.put_req_header(
-      conn,
-      "authorization",
-      Plug.BasicAuth.encode_basic_auth(
-        Application.fetch_env!(:station, :ops_username),
-        Application.fetch_env!(:station, :ops_password)
-      )
-    )
-  end
 end
