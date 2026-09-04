@@ -1,0 +1,36 @@
+# Voyager Station, the ElixirConf booth demo.
+#
+#   cp .env.example .env    # then fill in the secrets
+#   docker compose up -d --build
+#
+# The app listens on plain HTTP and expects to sit behind a reverse proxy that
+# terminates TLS and sets X-Forwarded-Proto (force_ssl is compiled in). Without
+# a proxy, only http://localhost works - every other host is redirected to https.
+services:
+  station:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4000}:4000"
+      # Voyager attaches to the BEAM node over an SSH tunnel to this host:
+      # EPMD plus one fixed distribution port, bound to loopback only.
+      - "127.0.0.1:${EPMD_PORT:-4369}:4369"
+      - "127.0.0.1:9100:9100"
+    env_file: .env
+    environment:
+      PORT: "4000"
+      PHX_HOST: ${PHX_HOST:?set PHX_HOST to the public hostname}
+      STATION_DOCK_URL: https://${PHX_HOST}
+      STATION_NODE_NAME: station@127.0.0.1
+      STATION_DIST_PORT: "9100"
+    volumes:
+      # The leaderboard survives a redeploy; nothing else is persisted.
+      - leaderboard:/var/lib/station
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  leaderboard:

@@ -53,6 +53,19 @@ node so there is something to connect to:
 elixir --sname station --cookie station-voy-1 -S mix phx.server
 ```
 
+## Running it in Docker
+
+```bash
+cp .env.example .env   # fill in the secrets
+docker compose up -d --build
+```
+
+The container listens on plain HTTP behind a TLS-terminating reverse proxy that
+sets `X-Forwarded-Proto`. The leaderboard lives in the `leaderboard` volume.
+EPMD and one fixed distribution port are published on the host's loopback only,
+so Voyager attaches exactly as it would to a bare release: an SSH tunnel to the
+host. Everything else is in `docker-compose.yml`.
+
 ## The demo, in ninety seconds
 
 Not a script to get through — a running order the staff can join and leave at
