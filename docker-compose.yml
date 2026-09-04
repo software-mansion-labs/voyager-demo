@@ -3,15 +3,14 @@
 #   cp .env.example .env    # then fill in the secrets
 #   docker compose up -d --build
 #
-# The app listens on plain HTTP and expects to sit behind a reverse proxy that
-# terminates TLS and sets X-Forwarded-Proto (force_ssl is compiled in). Without
-# a proxy, only http://localhost works - every other host is redirected to https.
+# The app listens on plain HTTP; Caddy in front terminates TLS on 443 with a
+# Let's Encrypt certificate (force_ssl is compiled in, so the proxy is not
+# optional). PHX_HOST must resolve to this box and ports 80/443 must be open.
 services:
   station:
     build: .
     restart: unless-stopped
     ports:
-      - "${PORT:-4000}:4000"
       # Voyager attaches to the BEAM node over an SSH tunnel to this host:
       # EPMD plus one fixed distribution port, bound to loopback only.
       - "127.0.0.1:${EPMD_PORT:-4369}:4369"
@@ -32,5 +31,20 @@ services:
       timeout: 5s
       retries: 3
 
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PHX_HOST: ${PHX_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on:
+      - station
+
 volumes:
   leaderboard:
+  caddy:
