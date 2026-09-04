@@ -13,15 +13,6 @@ about a live node. The concept and the reasoning are in
 | Leaderboard     | `/leaderboard`   |
 | Visitor's phone | `/` then `/ship` |
 
-## Development
-
-```bash
-mix setup
-mix phx.server
-```
-
-Open `/` in a phone-sized window and `/tv` in a wide one.
-
 ## Deploying to a server
 
 Needs a box with Docker, a domain with an A record pointing at it, and ports 80
@@ -95,26 +86,3 @@ docker compose exec station bin/station remote
 | `OpsPanel.restart_warehouse()`                  | shows a supervisor restart: cargo dies, ETS survives |
 | `OpsPanel.reset_station()`                      | undock everyone, empty the shelves                   |
 | `OpsPanel.reset_leaderboard()`                  | start a day from zero                                |
-
-## Running on a laptop instead
-
-The booth can also be one Linux laptop and the wifi it makes: no server, no
-domain, no certificate. Run the dev server bound to the wifi address and the QR
-code picks up the laptop's address on that network by itself
-(`STATION_DOCK_URL` overrides it when the guess is wrong):
-
-```bash
-BIND_IP=0.0.0.0 elixir --name station@127.0.0.1 --cookie station-voy-1 -S mix phx.server
-```
-
-Voyager attaches to `station@127.0.0.1` with that cookie on the same machine.
-Test on the actual network before the doors open: conference access points
-often refuse to route between two clients, and a laptop hotspot holds around
-ten phones.
-
-## Tuning
-
-Load is designed, not incidental, and the knobs sit in one block at the top of
-`config/config.exs`. Run `mix station.calibrate` on the target machine first:
-it prints the cost of each cargo type there and whether the bottleneck demo
-will fire.
