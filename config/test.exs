@@ -52,7 +52,4 @@ config :station,
       blurb: "Tiny, and a nightmare to inspect."
     }
   },
-  leaderboard_path: "priv/leaderboard_test.ets",
-  ops_token: "dev",
-  ops_username: "ops",
-  ops_password: "ops"
+  leaderboard_path: "priv/leaderboard_test.ets"

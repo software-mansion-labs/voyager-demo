@@ -14,7 +14,6 @@ Two screens make the demo:
 | Television      | `/tv`                      | **the narrative**                  |
 | Leaderboard     | `/leaderboard`             | the ETS table, on its own screen   |
 | Visitor's phone | `/` then `/ship`           | the thing worth pressing           |
-| Booth staff     | `/ops/<token>`             | the two switches that are the demo |
 
 That head movement — left to the television, right to the laptop — is the whole
 point.
@@ -43,8 +42,7 @@ mix setup
 mix phx.server
 ```
 
-Then open `/` on a phone-sized window, `/tv` on a wide one, and `/ops/dev` with
-the username and password `ops` / `ops`.
+Then open `/` on a phone-sized window and `/tv` on a wide one.
 
 To attach Voyager to a station running on your own machine, start it as a named
 node so there is something to connect to:
@@ -119,18 +117,20 @@ machine, what the warehouse can absorb before its queue starts climbing, and
 the load a racing room offers per clerk. If that number is under 100%, the
 bottleneck demo will not fire — raise `:inspection_rounds`.
 
-## The ops panel
+## The staff's switches
 
-`/ops/<token>`, behind both an unguessable path segment and a password.
+There is no ops page. The switches live in `Station.OpsPanel` and are flipped
+from a remote shell on the node (`bin/station remote`, or `iex` next to
+`mix phx.server` in development):
 
-| Control                            | What it is for                                       |
-| ---------------------------------- | ---------------------------------------------------- |
-| `SINGLE CLERK` / `INSPECTION CREW` | the bottleneck demo, and its fix                     |
-| `x1` / `x4` / `x8` haulers         | the producer/consumer demo, and its fix              |
-| `REMOVE` next to a ship            | a name that got past the filter                      |
-| `RESTART WAREHOUSE`                | shows a supervisor restart: cargo dies, ETS survives |
-| `RESET STATION`                    | undock everyone, empty the shelves                   |
-| `RESET LEADERBOARD`                | start a day from zero                                |
+| Call                                            | What it is for                                       |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| `OpsPanel.set_warehouse_mode(:inspection_crew)` | the bottleneck demo, and its fix                     |
+| `OpsPanel.set_hauler_boost(4)`                  | the producer/consumer demo, and its fix              |
+| `DockingBay.remove(:ship_name)`                 | a name that got past the filter                      |
+| `OpsPanel.restart_warehouse()`                  | shows a supervisor restart: cargo dies, ETS survives |
+| `OpsPanel.reset_station()`                      | undock everyone, empty the shelves                   |
+| `OpsPanel.reset_leaderboard()`                  | start a day from zero                                |
 
 ## Running the booth
 
@@ -152,7 +152,6 @@ Then, on that laptop:
 | -------------------------------------- | ------------------------------------------------ |
 | television, second display, fullscreen | `/tv`                                            |
 | Voyager, on the laptop's own screen    | attaches to `station@<hostname>` with the cookie |
-| booth staff, on a phone                | `/ops/dev`, username and password `ops`          |
 
 The television carries the QR code, and the QR code carries **the address the
 laptop actually has on that network** - read off the running machine at page

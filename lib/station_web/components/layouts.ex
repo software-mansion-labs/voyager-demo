@@ -15,7 +15,7 @@ defmodule StationWeb.Layouts do
   The shell every page sits in.
 
   Deliberately almost nothing: the station's three screens - the phone cockpit,
-  the television and the ops panel - each own their whole viewport, so a shared
+  the television - each own their whole viewport, so a shared
   navbar would only be in the way.
   """
   attr :flash, :map, required: true

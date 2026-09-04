@@ -23,28 +23,12 @@ end
 config :station, StationWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-# Ops panel: an unguessable path AND a password. Both are required in prod, so
-# a misconfigured deploy fails loudly instead of publishing the kill switches.
-#
 # The leaderboard snapshot lives outside the release directory, so it is the one
 # thing that survives a redeploy - the third level of the persistence story.
 if config_env() == :prod do
   config :station,
     leaderboard_path:
-      System.get_env("STATION_LEADERBOARD_PATH") || "/var/lib/station/leaderboard.ets",
-    ops_token:
-      System.get_env("STATION_OPS_TOKEN") ||
-        raise("""
-        environment variable STATION_OPS_TOKEN is missing.
-        Generate one with: mix phx.gen.secret 32
-        """),
-    ops_password:
-      System.get_env("STATION_OPS_PASSWORD") ||
-        raise("""
-        environment variable STATION_OPS_PASSWORD is missing.
-        Generate one with: mix phx.gen.secret 32
-        """),
-    ops_username: System.get_env("STATION_OPS_USERNAME", "ops")
+      System.get_env("STATION_LEADERBOARD_PATH") || "/var/lib/station/leaderboard.ets"
 end
 
 if config_env() == :prod do
