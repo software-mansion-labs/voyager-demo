@@ -252,6 +252,8 @@ defmodule StationWeb.CockpitLive do
         <div class="grid shrink-0 grid-cols-2 gap-2">
           <a
             href="https://voyager.swmansion.com"
+            target="_blank"
+            rel="noopener"
             class="voyager-button flex items-center justify-center p-3"
           >
             <Sprites.voyager_logo class="h-8" />
