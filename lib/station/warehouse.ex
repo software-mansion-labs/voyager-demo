@@ -10,6 +10,8 @@ defmodule Station.Warehouse do
       accepted, so the work is real and shows up as reductions - on the clerk
     * every accepted container is kept in process state, so memory grows into
       the fat process the whole industry hunts for in production
+    * a full warehouse stops taking cargo in - nothing is ever thrown away - so
+      the mailbox grows instead, until a hauler makes room
 
   This process only routes: each container goes to the next clerk in
   `Station.InspectionCrew` and comes back checksummed to be stored. With one
@@ -22,6 +24,19 @@ defmodule Station.Warehouse do
   change arriving as a message would sit behind the backlog it is meant to fix:
   at a queue of a hundred, ops would press the button and watch nothing happen
   for a minute. Read from the term, the very next container goes to the new crew.
+
+  ## Full
+
+  At `:warehouse_capacity` the warehouse holds the door: it stops receiving
+  anything but a hauler's `collect` (and a flush, and the system messages that
+  keep `:sys` and the supervisor working) with a selective receive, and every
+  container that arrives - raw from a ship, or checksummed back from a clerk -
+  waits in this process's mailbox. That is backpressure the way the BEAM does
+  it: the queue in front of the full process is the process's own
+  `message_queue_len`, visible on the television and in Voyager, and the first
+  hauler to make room lets the next container off the queue and onto the shelf.
+  Nothing is jettisoned, ever; the memory the demo eats is bounded by the
+  ramps - a ship ships at ramp speed, and its own mailbox is capped.
   """
 
   use GenServer
@@ -52,6 +67,10 @@ defmodule Station.Warehouse do
   """
   @spec accept(String.t() | nil, Cargo.container()) :: :ok
   def accept(ship, container), do: GenServer.cast(__MODULE__, {:accept, ship, container})
+
+  @doc "Containers the shelf holds before the warehouse stops taking more."
+  @spec capacity() :: pos_integer()
+  def capacity, do: Application.fetch_env!(:station, :warehouse_capacity)
 
   @doc "A hauler asking for cargo to take away."
   @spec collect(pid(), pos_integer()) :: :ok
@@ -115,8 +134,9 @@ defmodule Station.Warehouse do
       stored_bytes: Metrics.get(:stored_bytes),
       accepted: Metrics.get(:accepted),
       inspected: Metrics.get(:inspected),
-      dropped: Metrics.get(:dropped),
-      collected: Metrics.get(:collected)
+      collected: Metrics.get(:collected),
+      capacity: capacity(),
+      full?: Metrics.get(:stored) >= capacity()
     }
   end
 
@@ -135,25 +155,118 @@ defmodule Station.Warehouse do
       cargo: :queue.new(),
       count: 0,
       bytes: 0,
-      capacity: Application.fetch_env!(:station, :warehouse_capacity),
+      capacity: capacity(),
       gc_watermark: 0,
       sizes: Map.new(Cargo.presets(), fn {type, _} -> {type, Cargo.container_bytes(type)} end),
-      next: 0
+      next: 0,
+      # Whether the last event said FULL. Haulers nibbling at a full shelf
+      # would otherwise announce it again every time the door opens a crack.
+      announced_full?: false
     }
 
     {:ok, state}
   end
 
+  # Every path that puts a container on the shelf ends in `hold_the_door/1`:
+  # a full warehouse does not come back to the GenServer loop - where the next
+  # message would be received whatever it is - until a hauler has made room.
   @impl true
   def handle_cast({:accept, ship, container}, state) do
-    {:noreply, route(state, ship, container, InspectionCrew.on_shift())}
+    state = route(state, ship, container, InspectionCrew.on_shift())
+    {:noreply, hold_the_door(state)}
   end
 
   def handle_cast({:inspected, ship, container}, state) do
-    {:noreply, store(state, ship, container)}
+    state = store(state, ship, container)
+    {:noreply, hold_the_door(state)}
   end
 
   def handle_cast({:collect, hauler, count}, state) do
+    {:noreply, collect(state, hauler, count)}
+  end
+
+  def handle_cast(:flush, state) do
+    {:noreply, flush(state)}
+  end
+
+  # The door. Below capacity there is nothing to do. At capacity this process
+  # sits in a selective receive that takes only what makes room or keeps the
+  # runtime honest, and leaves every container where it is: in the mailbox,
+  # counted, waiting. Returning from here returns to the GenServer loop, and
+  # the next message in the queue - a container - gets its turn.
+  defp hold_the_door(%{count: count, capacity: capacity} = state) when count < capacity do
+    state
+  end
+
+  defp hold_the_door(state) do
+    state
+    |> announce_full()
+    |> wait_for_room()
+  end
+
+  defp announce_full(%{announced_full?: true} = state), do: state
+
+  defp announce_full(state) do
+    Events.emit(
+      :warehouse_full,
+      "WAREHOUSE FULL - #{state.count} CONTAINERS ON THE SHELF, HOLDING THE DOOR",
+      :warning
+    )
+
+    %{state | announced_full?: true}
+  end
+
+  # Room again - said once, and only once the haulers have made real room, a
+  # twentieth of the shelf, so a full warehouse with haulers at it stays "full".
+  defp announce_room(%{announced_full?: true, count: count, capacity: capacity} = state)
+       when count <= capacity - div(capacity, 20) do
+    Events.emit(:warehouse_full, "WAREHOUSE HAS ROOM AGAIN - #{count} ON THE SHELF")
+    %{state | announced_full?: false}
+  end
+
+  defp announce_room(state), do: state
+
+  defp wait_for_room(%{count: count, capacity: capacity} = state) when count < capacity do
+    state
+  end
+
+  defp wait_for_room(state) do
+    receive do
+      {:"$gen_cast", {:collect, hauler, count}} ->
+        state |> collect(hauler, count) |> wait_for_room()
+
+      {:"$gen_cast", :flush} ->
+        flush(state)
+
+      # :sys.get_state, :sys.suspend, the observer, a code change - all of it
+      # still works on a full warehouse, and hands control back to this loop.
+      {:system, from, request} ->
+        :sys.handle_system_msg(request, from, :gen.get_parent(), __MODULE__, [], state)
+    end
+  end
+
+  # The :sys callbacks the selective receive above needs. `system_continue/3`
+  # is where `:sys.handle_system_msg/6` lands after answering, so it returns
+  # to the door - and, being a tail call, its return value is the loop's.
+  @doc false
+  def system_continue(_parent, _debug, state), do: wait_for_room(state)
+
+  @doc false
+  def system_terminate(reason, _parent, _debug, _state), do: exit(reason)
+
+  @doc false
+  def system_get_state(state), do: {:ok, state}
+
+  @doc false
+  def system_replace_state(fun, state) do
+    new_state = fun.(state)
+    {:ok, new_state, new_state}
+  end
+
+  @doc false
+  def system_code_change(state, _module, _old_vsn, _extra), do: {:ok, state}
+
+  defp collect(state, hauler, count) do
     {taken, state} = take(state, count, [])
 
     if taken != [] do
@@ -167,14 +280,14 @@ defmodule Station.Warehouse do
       end)
     end
 
-    {:noreply, collect_garbage(state)}
+    state |> collect_garbage() |> announce_room()
   end
 
-  def handle_cast(:flush, state) do
+  defp flush(state) do
     Metrics.sub(:stored, state.count)
     Metrics.sub(:stored_bytes, state.bytes)
     clear_shelf()
-    {:noreply, %{state | cargo: :queue.new(), count: 0, bytes: 0}}
+    announce_room(%{state | cargo: :queue.new(), count: 0, bytes: 0})
   end
 
   # Nobody on shift - the instant of a shift change, or the crew's supervisor
@@ -209,31 +322,6 @@ defmodule Station.Warehouse do
     Metrics.add(:stored, 1)
     Metrics.add(:stored_bytes, bytes)
     :ets.update_counter(@shelf, container.type, 1)
-
-    enforce_capacity(state)
-  end
-
-  # Above capacity the oldest cargo goes over the side. Without this the demo
-  # eventually eats the box it runs on.
-  #
-  # Jettisoned a batch at a time rather than one container per message: at the
-  # ceiling every single arrival is an overflow, and one-in-one-out would put an
-  # identical line on the television several hundred times a second.
-  defp enforce_capacity(%{count: count, capacity: capacity} = state) when count <= capacity do
-    state
-  end
-
-  defp enforce_capacity(state) do
-    overflow = max(state.count - state.capacity, div(state.capacity, 20))
-    {dropped, state} = take(state, overflow, [])
-
-    Metrics.add(:dropped, length(dropped))
-
-    Events.emit(
-      :cargo_dropped,
-      "WAREHOUSE OVER CAPACITY - #{length(dropped)} CONTAINERS JETTISONED",
-      :warning
-    )
 
     state
   end

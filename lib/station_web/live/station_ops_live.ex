@@ -14,7 +14,7 @@ defmodule StationWeb.StationOpsLive do
   None of it is decoration. Every crate in flight is a delivery that actually
   happened in the last second, every tile is a container really on the shelf,
   and the lanes are the clerks ops just put on shift. The hold goes red when
-  the warehouse is full and jettisoning. The visitor watches it here and then
+  the warehouse is full and holding the door. The visitor watches it here and then
   confirms every bit of it in Voyager, two feet to the left.
 
   The one honest compromise is the cap: at a busy moment the station moves a few

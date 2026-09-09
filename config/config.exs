@@ -80,10 +80,13 @@ config :station,
   },
 
   # --- warehouse -------------------------------------------------------------
-  # Containers held before the oldest go over the side. Sized so the bay window
-  # on the television (96 cells) lights a cell every dozen containers or so and
-  # a rush hour with the crew on fills it in minutes, not an afternoon. The
-  # jettison line on the wall is the payoff - it has to be reachable.
+  # Containers the shelf holds before the warehouse stops taking more. Nothing
+  # is ever thrown away: a full warehouse holds the door and every container
+  # that arrives waits in its mailbox until a hauler makes room. Sized so the
+  # bay window on the television (96 cells) lights a cell every dozen
+  # containers or so and a rush hour with the crew on fills it in minutes, not
+  # an afternoon. A full hold with the queue climbing is the payoff - it has to
+  # be reachable.
   warehouse_capacity: 1_200,
   # Clerks on shift when the station boots. Checksums always happen in clerk
   # processes, never in the warehouse itself; one clerk is the bottleneck demo,

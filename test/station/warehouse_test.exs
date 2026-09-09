@@ -27,17 +27,53 @@ defmodule Station.WarehouseTest do
     assert %{containers: 1, cargo: "ore"} = Leaderboard.get("nostromo")
   end
 
-  test "over capacity the oldest cargo goes over the side" do
-    capacity = Application.fetch_env!(:station, :warehouse_capacity)
+  # A full warehouse throws nothing away. It stops receiving: the containers
+  # that do not fit wait in its own mailbox, and the first hauler to make room
+  # lets them in, oldest first.
+  test "a full warehouse holds the door and the overflow waits in its mailbox" do
+    capacity = Warehouse.capacity()
     deliver("nostromo", "ice", capacity + 3)
 
     assert Metrics.get(:stored) == capacity
-    assert Metrics.get(:dropped) == 3
+    assert Warehouse.stats().full?
+    Station.Watchdog.sample()
+    assert Warehouse.stats().queue == 3, "the overflow is not waiting in the mailbox"
 
-    # The leaderboard counts what was delivered, not what is still on the shelf.
-    # A visitor's score must not shrink because the station ran out of room.
+    # Three were never stored, so three were never scored - yet.
+    assert %{containers: ^capacity} = Leaderboard.get("nostromo")
+
+    # Room for two: exactly two come off the queue, the third keeps waiting.
+    Warehouse.collect(self(), 2)
+    settle()
+    assert_receive {:cargo_collected, [_, _]}
+    assert Metrics.get(:stored) == capacity
+    Station.Watchdog.sample()
+    assert Warehouse.stats().queue == 1
+
+    # Room for all: the shelf is short by two and nothing waits anywhere.
+    Warehouse.collect(self(), 3)
+    settle()
+    assert Metrics.get(:stored) == capacity - 2
+    refute Warehouse.stats().full?
+    Station.Watchdog.sample()
+    assert Warehouse.stats().queue == 0
     delivered = capacity + 3
     assert %{containers: ^delivered} = Leaderboard.get("nostromo")
+  end
+
+  test "a full warehouse still answers :sys and can be flushed" do
+    capacity = Warehouse.capacity()
+    deliver(nil, "ice", capacity + 2)
+
+    # settle/0 is :sys.get_state under the hood - it just worked on a full
+    # warehouse, which is the point of handling system messages at the door.
+    assert %{count: ^capacity} = :sys.get_state(Warehouse)
+
+    Warehouse.flush()
+    settle()
+
+    # The flush emptied the shelf and the two that were waiting came in.
+    assert Metrics.get(:stored) == 2
   end
 
   test "the shelf is published per cargo type, for the tiles on the television" do

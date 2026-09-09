@@ -452,12 +452,17 @@ defmodule StationWeb.OpsLive do
           />
         </.panel>
 
-        <.panel title="WAREHOUSE" tone="text-secondary">
+        <.panel title="WAREHOUSE" tone={if(@stats.full?, do: "text-error", else: "text-secondary")}>
           <:blurb>
-            Empties the shelf, the warehouse mailbox and every clerk's mailbox - {format_count(
-              @stats.stored
-            )} stored, {format_count(@stats.backlog)} waiting. The leaderboard
-            keeps every delivery.
+            {format_count(@stats.stored)}/{format_count(@stats.capacity)} on the shelf, {format_count(
+              @stats.backlog
+            )} waiting.
+            <span :if={@stats.full?} class="text-error">
+              Full: the warehouse is holding the door and its queue grows until the haulers make room.
+            </span>
+            Nothing is ever thrown away; CLEAR is the only way cargo leaves without a hauler.
+            It empties the shelf, the warehouse mailbox and every clerk's mailbox. The
+            leaderboard keeps every delivery.
           </:blurb>
 
           <.danger_button

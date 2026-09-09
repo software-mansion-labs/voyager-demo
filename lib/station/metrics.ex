@@ -11,7 +11,6 @@ defmodule Station.Metrics do
   @keys [
     :accepted,
     :inspected,
-    :dropped,
     :collected,
     :stored,
     :stored_bytes,
@@ -32,7 +31,6 @@ defmodule Station.Metrics do
   @type key ::
           :accepted
           | :inspected
-          | :dropped
           | :collected
           | :stored
           | :stored_bytes
