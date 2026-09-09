@@ -36,6 +36,11 @@ defmodule Station.Warehouse do
 
   @gc_threshold 8 * 1024 * 1024
 
+  # What is on the shelf, per cargo type, for the television to draw one tile
+  # per container without asking this process anything. Owned by this process
+  # on purpose: when the warehouse dies, its cargo dies, and so does the table.
+  @shelf :station_warehouse_shelf
+
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -61,6 +66,20 @@ defmodule Station.Warehouse do
   @doc "Empties the warehouse without restarting it."
   @spec flush() :: :ok
   def flush, do: GenServer.cast(__MODULE__, :flush)
+
+  @doc """
+  Containers on the shelf, per cargo type. Read from ETS, never asked.
+
+  Empty while the warehouse is between a crash and its restart - which is the
+  truth: the shelf died with the process.
+  """
+  @spec shelf() :: %{Cargo.type() => non_neg_integer()}
+  def shelf do
+    case :ets.whereis(@shelf) do
+      :undefined -> %{}
+      _ref -> @shelf |> :ets.tab2list() |> Map.new()
+    end
+  end
 
   @doc """
   Everything the dashboards need, read from outside the process.
@@ -90,6 +109,12 @@ defmodule Station.Warehouse do
   def init(_opts) do
     Metrics.add(:stored, -Metrics.get(:stored))
     Metrics.add(:stored_bytes, -Metrics.get(:stored_bytes))
+
+    if :ets.whereis(@shelf) == :undefined do
+      :ets.new(@shelf, [:set, :public, :named_table, read_concurrency: true])
+    end
+
+    clear_shelf()
 
     state = %{
       cargo: :queue.new(),
@@ -127,6 +152,7 @@ defmodule Station.Warehouse do
   def handle_cast(:flush, state) do
     Metrics.sub(:stored, state.count)
     Metrics.sub(:stored_bytes, state.bytes)
+    clear_shelf()
     {:noreply, %{state | cargo: :queue.new(), count: 0, bytes: 0}}
   end
 
@@ -167,6 +193,7 @@ defmodule Station.Warehouse do
 
     Metrics.add(:stored, 1)
     Metrics.add(:stored_bytes, bytes)
+    :ets.update_counter(@shelf, container.type, 1)
 
     enforce_capacity(state)
   end
@@ -215,6 +242,11 @@ defmodule Station.Warehouse do
 
   defp collect_garbage(state), do: state
 
+  defp clear_shelf do
+    for type <- Map.keys(Cargo.presets()), do: :ets.insert(@shelf, {type, 0})
+    :ok
+  end
+
   defp take(state, 0, acc), do: {Enum.reverse(acc), state}
 
   defp take(state, count, acc) do
@@ -223,6 +255,7 @@ defmodule Station.Warehouse do
         bytes = Map.fetch!(state.sizes, container.type)
         Metrics.sub(:stored, 1)
         Metrics.sub(:stored_bytes, bytes)
+        :ets.update_counter(@shelf, container.type, -1)
 
         state = %{state | cargo: rest, count: state.count - 1, bytes: state.bytes - bytes}
         take(state, count - 1, [entry | acc])

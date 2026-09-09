@@ -60,6 +60,11 @@ defmodule StationWeb.OpsLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event("clear_warehouse", _params, socket) do
+    OpsPanel.clear_warehouse()
+    {:noreply, refresh(socket)}
+  end
+
   @impl true
   def handle_info(:refresh, socket), do: {:noreply, refresh(socket)}
 
@@ -215,6 +220,24 @@ defmodule StationWeb.OpsLive do
             class="pixel-panel pixel-panel-danger flex items-center justify-center p-3 font-pixel text-[10px] text-error"
           >
             UNDOCK ALL FREIGHTERS NOW
+          </button>
+        </section>
+
+        <section class="pixel-panel flex flex-col gap-3 p-4">
+          <h2 class="font-pixel text-[10px] text-secondary">WAREHOUSE</h2>
+          <p class="font-mono text-[11px] text-base-content/50">
+            Empties the shelf and the mailbox behind it - {format_count(@stats.stored)} stored, {format_count(
+              @stats.queue
+            )} waiting. The leaderboard keeps every delivery.
+          </p>
+          <button
+            type="button"
+            id="clear-warehouse"
+            phx-click="clear_warehouse"
+            data-confirm="Empty the warehouse and drop everything waiting in its queue?"
+            class="pixel-panel pixel-panel-danger flex items-center justify-center p-3 font-pixel text-[10px] text-error"
+          >
+            CLEAR WAREHOUSE AND QUEUE
           </button>
         </section>
 

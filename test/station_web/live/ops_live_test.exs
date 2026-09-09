@@ -40,6 +40,22 @@ defmodule StationWeb.OpsLiveTest do
     assert OpsPanel.freighters() == 2
   end
 
+  test "clearing the warehouse empties the shelf and the queue, not the board", %{conn: conn} do
+    [container] = Station.Cargo.build_hold("ice", 1)
+    Station.Warehouse.accept("nostromo", container)
+    :sys.get_state(Station.Warehouse)
+    assert Station.Metrics.get(:stored) == 1
+
+    pid = Process.whereis(Station.Warehouse)
+    {:ok, view, _html} = live(conn, ~p"/ops")
+    view |> element("#clear-warehouse") |> render_click()
+
+    assert Process.whereis(Station.Warehouse) != pid
+    assert Station.Metrics.get(:stored) == 0
+    assert %{"ice" => 0} = Station.Warehouse.shelf()
+    assert %{containers: 1} = Station.Leaderboard.get("nostromo")
+  end
+
   test "yield is a switch and undock-all is a button", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/ops")
 

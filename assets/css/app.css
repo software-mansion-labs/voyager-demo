@@ -435,65 +435,262 @@ html:has(.tv) {
   filter: drop-shadow(0 0 3px color-mix(in oklch, currentColor 55%, transparent));
 }
 
-.scene-bay {
+/* The station: Station.Warehouse drawn as the pipeline it is, inside a pixel
+   art hull (StationWeb.StationArt) that reads as a space station from across
+   the aisle. The art is one SVG scaled to the box; the live panels are laid
+   over its four windows on the same grid coordinates. */
+.scene-station {
   position: absolute;
-  display: grid;
-  gap: 1px;
-  align-content: end;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 160 / 56;
   pointer-events: none;
 }
 
-.scene-bay span {
+.scene-station-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The hull's palette. Hex on purpose: the hull is one drawing, not a themed
+   component, and the dark scene it sits in is the only place it appears. */
+.scene-station-art .k-hull { fill: #2a3550; }
+.scene-station-art .k-hull_dark { fill: #131a2b; }
+.scene-station-art .k-plate { fill: #35426a; }
+.scene-station-art .k-rivet { fill: #7488b5; }
+.scene-station-art .k-window { fill: #05080f; }
+.scene-station-art .k-frame { fill: #4d628f; }
+.scene-station-art .k-strut { fill: #5a6f99; }
+.scene-station-art .k-dish { fill: #8ea2cf; }
+.scene-station-art .k-panel { fill: #17365a; }
+.scene-station-art .k-panel_line { fill: #0b1a2c; }
+.scene-station-art .k-panel_edge { fill: #3d6aa0; }
+.scene-station-art .k-chevron { fill: var(--color-primary); }
+.scene-station-art .k-beacon { fill: var(--color-warning); animation: scene-beacon 1.6s steps(2, end) infinite; }
+.scene-station-art .k-nav { fill: var(--color-error); animation: scene-beacon 1.6s steps(2, end) infinite; }
+.scene-station-art .k-nav_alt { fill: var(--color-error); animation: scene-beacon 1.6s steps(2, end) infinite; animation-delay: 0.8s; }
+
+@keyframes scene-beacon {
+  from { opacity: 1; }
+  to { opacity: 0.15; }
+}
+
+.scene-stage {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  min-width: 0;
+}
+
+.scene-stage h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  line-height: 1.6;
+  color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+}
+
+.scene-stage-count {
+  display: flex;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+}
+
+.scene-stage-figure {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1.2;
+  color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+}
+
+.scene-stage-figure b {
+  font-family: var(--font-pixel);
+  font-size: 0.75rem;
+  font-weight: normal;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The docking pads are drawn in the art; these are only the targets the
+   crates fly to, and never show. */
+.scene-station .scene-port {
+  width: 2.5%;
+  border: 0;
+  opacity: 0;
+}
+
+/* One lane per clerk. Dim while idle; while a container is being checksummed
+   the crate lights and a scan line sweeps it. In single clerk mode this is one
+   box working flat out next to an intake count that keeps climbing - the whole
+   bottleneck, in two inches. */
+.scene-lanes {
+  display: grid;
+  grid-template-columns: repeat(4, 1.5rem);
+  grid-auto-rows: 1.5rem;
+  gap: 3px;
+}
+
+.scene-lane {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid color-mix(in oklch, currentColor 35%, transparent);
+  background-color: color-mix(in oklch, var(--color-base-300) 85%, black);
+}
+
+.scene-lane svg {
+  position: absolute;
+  inset: 2px;
+  width: auto;
+  height: auto;
+  opacity: 0.2;
+  transition: opacity 120ms steps(2, end);
+}
+
+.scene-lane.is-busy {
+  border-color: currentColor;
+}
+
+.scene-lane.is-busy svg {
+  opacity: 1;
+}
+
+.scene-lane.is-busy::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: currentColor;
+  animation: scene-scan 0.5s steps(8, end) infinite;
+}
+
+@keyframes scene-scan {
+  from { top: 0; }
+  to { top: 100%; }
+}
+
+/* The warehouse: one tile per container on the shelf, in its cargo colour,
+   laid out as the queue it is. Columns fill bottom-up starting at the outbound
+   wall, so the oldest cargo stands nearest the haulers and the newest arrives
+   at the intake side - and when a hauler takes the oldest, everything steps one
+   place towards the door. The grid is sized for the whole capacity from the
+   start: an empty warehouse is the same box as a full one. */
+.scene-hold {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-auto-flow: column;
+  direction: rtl;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid color-mix(in oklch, var(--color-primary) 25%, transparent);
+  background-color: #05080f;
+  transform: scaleY(-1);
+}
+
+.scene-tile {
   background-color: currentColor;
 }
 
-/* Ship names hang below one column and above the next, so a long name lands in
-   the gap between two neighbours rather than across one of them.
+/* Full: only the warehouse says so - its frame, its border, its count. */
+.scene-station.is-full .scene-hold {
+  border-color: var(--color-error);
+  animation: scene-blink 0.9s steps(2, end) infinite;
+}
 
-   The name carries its own background, because at thirty docked ships the
-   columns are close enough that two labels still meet - and a name that cannot
-   be read is the one thing on this screen that must not happen. */
+.scene-station.is-full .scene-stage-hold h3,
+.scene-station.is-full [data-scene-hold-count] {
+  color: var(--color-error);
+}
+
+@keyframes scene-blink {
+  from { border-color: var(--color-error); }
+  to { border-color: transparent; }
+}
+
+/* The corner badge: the one fact about the room, above the ships it counts.
+   The berths start far enough down the column to leave it clear. */
+.scene-badge {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border: 2px solid var(--color-base-300);
+  background-color: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  line-height: 1.6;
+  color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+  pointer-events: none;
+}
+
+.scene-badge b {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--color-secondary);
+}
+
+/* Ship names sit under their ships. The name carries its own background,
+   because the columns are close enough that a long name reaches the next one -
+   and a name that cannot be read is the one thing on this screen that must not
+   happen. */
 .scene-ship-label {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  /* Sized so the longest name in the pool fits between the two columns. */
+  font-size: 0.6875rem;
   line-height: 1;
   padding: 2px 4px;
   background-color: color-mix(in oklch, var(--color-base-300) 88%, black);
   color: var(--color-base-content);
 }
 
-[data-lane="0"] .scene-ship-label {
+/* Always under the ship, whichever column: a name that is sometimes above
+   and sometimes below is a name somebody reads against the wrong ship. The
+   hook shrinks the hulls so the row pitch has room for it. */
+.scene-ship-label {
   top: 100%;
-  margin-top: 5px;
-}
-
-[data-lane="1"] .scene-ship-label {
-  bottom: 100%;
-  margin-bottom: 5px;
-}
-
-[data-lane="2"] .scene-ship-label {
-  top: 100%;
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 /* The dock lights. Off by default, flared briefly as cargo lands. */
+/* A dock: visible when idle as an outlined pad, so a visitor can see where
+   the cargo is headed before the first crate lands; solid for a moment when
+   one does. Under load it stays lit. */
 .scene-port {
   position: absolute;
-  width: 2.4%;
+  width: 14px;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  background-color: currentColor;
-  opacity: 0;
-  transition: opacity 140ms steps(3, end);
+  border: 2px solid currentColor;
+  background-color: transparent;
+  opacity: 0.45;
+  transition:
+    opacity 140ms steps(3, end),
+    background-color 140ms steps(3, end);
 }
 
 .scene-port.is-hot {
-  opacity: 0.75;
+  opacity: 1;
+  background-color: currentColor;
   transition-duration: 0ms;
 }
 
@@ -517,7 +714,15 @@ html:has(.tv) {
   .scene-stars-far,
   .scene-stars-near,
   .scene-hover,
-  .scene-thruster {
+  .scene-thruster,
+  .scene-ship-arriving,
+  .scene-ship-leaving,
+  .scene-hauler-leaving,
+  .scene-lane.is-busy::after,
+  .scene-station.is-full .scene-hold,
+  .scene-station-art .k-beacon,
+  .scene-station-art .k-nav,
+  .scene-station-art .k-nav_alt {
     animation: none;
   }
 }

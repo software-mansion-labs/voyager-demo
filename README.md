@@ -90,6 +90,7 @@ docker compose exec station bin/station remote
 | `OpsPanel.set_hauler_boost(4)`                  | the producer/consumer demo, and its fix               |
 | `DockingBay.remove(:ship_amber_falcon)`         | kick one ship off the station                         |
 | `OpsPanel.restart_warehouse()`                  | shows a supervisor restart: cargo dies, ETS survives  |
+| `OpsPanel.clear_warehouse()`                    | empty the shelf and the queue (also a button on `/ops`) |
 | `OpsPanel.reset_station()`                      | undock everyone, empty the shelves; the fleet stays   |
 | `OpsPanel.reset_leaderboard()`                  | start a day from zero                                 |
 

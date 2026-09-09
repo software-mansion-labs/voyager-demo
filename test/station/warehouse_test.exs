@@ -32,6 +32,20 @@ defmodule Station.WarehouseTest do
     assert %{containers: ^delivered} = Leaderboard.get("nostromo")
   end
 
+  test "the shelf is published per cargo type, for the tiles on the television" do
+    deliver("nostromo", "ice", 3)
+    deliver("nostromo", "ore", 2)
+    assert %{"ice" => 3, "ore" => 2, "machinery" => 0} = Warehouse.shelf()
+
+    Warehouse.collect(self(), 2)
+    settle()
+    assert %{"ice" => 1, "ore" => 2} = Warehouse.shelf()
+
+    Warehouse.flush()
+    settle()
+    assert %{"ice" => 0, "ore" => 0} = Warehouse.shelf()
+  end
+
   test "a hauler takes cargo away and the memory goes with it" do
     deliver("nostromo", "machinery", 4)
     stored_bytes = Metrics.get(:stored_bytes)

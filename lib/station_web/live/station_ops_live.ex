@@ -4,16 +4,17 @@ defmodule StationWeb.StationOpsLive do
 
   It is a scene, not a dashboard with pictures on it. Visitors' ships fly in and
   dock along the left arm, containers cross the gap to the station one at a
-  time, the bay window fills with what the warehouse is holding, and haulers on
-  the right pull cargo back out.
+  time, and haulers on the right pull cargo back out. The station in the middle
+  is `Station.Warehouse` drawn as the pipeline it is, left to right: INTAKE,
+  where crates land and the mailbox depth is a number; INSPECTION, one lane per
+  clerk, lit while it is checksumming; the HOLD, one tile per container in the
+  process's state, coloured by cargo; and OUTBOUND, where the haulers collect.
 
   None of it is decoration. Every crate in flight is a delivery that actually
-  happened in the last second, and the bay window is process state - it lights
-  up from the very first container and goes red when the warehouse is full and
-  jettisoning. The queue is a number in the readout underneath, nothing more:
-  a pile of crates for `message_queue_len` was one picture too many. The
-  visitor watches it here and then confirms every bit of it in Voyager, two
-  feet to the left.
+  happened in the last second, every tile is a container really on the shelf,
+  and the lanes are the warehouse mode ops just switched. The hold goes red when
+  the warehouse is full and jettisoning. The visitor watches it here and then
+  confirms every bit of it in Voyager, two feet to the left.
 
   The one honest compromise is the cap: at a busy moment the station moves a few
   hundred containers a second and no television can draw that, so past the cap
@@ -22,9 +23,11 @@ defmodule StationWeb.StationOpsLive do
 
   use StationWeb, :live_view
 
+  alias Station.Cargo
   alias Station.Dispatcher
   alias Station.DockingBay
   alias Station.FreighterLine
+  alias Station.InspectionCrew
   alias Station.Ship
   alias Station.Warehouse
 
@@ -60,19 +63,14 @@ defmodule StationWeb.StationOpsLive do
     # the same: the television draws a station, and a ship is a ship on it.
     ships = ships() ++ FreighterLine.statuses()
     capacity = Application.fetch_env!(:station, :warehouse_capacity)
-    congested? = stats.queue >= Application.fetch_env!(:station, :congested_queue)
     full? = stats.stored >= capacity
 
+    # Everything the screen says is in the snapshot: the station carries its
+    # own figures, and the only fact about the room - who is docked - sits in
+    # the corner of the scene. There is no dashboard row underneath any more.
     {scene, previous} = scene(ships, stats, fleet, capacity, full?, socket.assigns.previous)
 
     socket
-    |> assign(:stats, stats)
-    |> assign(:fleet, fleet)
-    |> assign(:ships, ships)
-    |> assign(:congested?, congested?)
-    |> assign(:full?, full?)
-    |> assign(:capacity, DockingBay.capacity())
-    |> assign(:warehouse_capacity, capacity)
     |> assign(:scene, scene)
     |> assign(:previous, previous)
   end
@@ -108,6 +106,12 @@ defmodule StationWeb.StationOpsLive do
   defp scene(ships, stats, fleet, capacity, full?, previous) do
     delivered = Map.new(ships, &{&1.name, &1.delivered})
 
+    lanes =
+      case stats.mode do
+        :inspection_crew -> max(InspectionCrew.size(), 1)
+        :single_clerk -> 1
+      end
+
     # Berths are handed out in order of arrival and kept: a ship that moves is
     # a ship somebody loses track of, and the whole point of the screen is to
     # find your own. People take the column nearest the station, freighters
@@ -126,20 +130,34 @@ defmodule StationWeb.StationOpsLive do
       ships: scene_ships,
       haulers: fleet.haulers,
       haulerDelta: delta(previous && previous.collected, stats.collected),
-      stored: safe_ratio(stats.stored, capacity),
+      hauled: stats.collected,
+      waiting: stats.queue,
+      congested: stats.queue >= Application.fetch_env!(:station, :congested_queue),
+      memory: stats.memory,
+      docked: length(ships),
+      berths: DockingBay.capacity(),
+      lanes: lanes,
+      mode: stats.mode,
+      inspectedDelta: delta(previous && previous.inspected, stats.inspected),
+      # One tile per container, by type and in the cargo colours. The hold is
+      # ordered by type on purpose: the truth the tiles carry is what is on the
+      # shelf, and drawing a FIFO the process never publishes would be a guess.
+      hold: Map.merge(Map.new(Cargo.types(), &{&1, 0}), Warehouse.shelf()),
+      capacity: capacity,
       full: full?
     }
 
-    previous = %{delivered: delivered, collected: stats.collected}
+    previous = %{delivered: delivered, collected: stats.collected, inspected: stats.inspected}
 
     {Jason.encode!(payload), previous}
   end
 
+  # A box from StationArt as an inline style, so the panels sit in the windows
+  # the art drew for them whatever size the television is.
+  defp style(box), do: Enum.map_join(box, "; ", fn {k, v} -> "#{k}: #{v}" end)
+
   defp delta(nil, _current), do: 0
   defp delta(previous, current), do: max(current - previous, 0)
-
-  defp safe_ratio(_value, 0), do: 0.0
-  defp safe_ratio(value, max), do: Float.round(min(value / max, 1.0), 4)
 
   @impl true
   def render(assigns) do
@@ -167,54 +185,89 @@ defmodule StationWeb.StationOpsLive do
               <div class="scene-stars scene-stars-far"></div>
               <div class="scene-stars scene-stars-near"></div>
 
-              <%!-- The station itself, and the bay window the hook fills with
-                    whatever the warehouse is holding. --%>
-              <%!-- The ports light up as cargo lands, so the eye is pulled to
-                    where the work is happening rather than to the counters. --%>
-              <span data-scene-port="in" class="scene-port text-primary" style="left: 28%; top: 50%">
-              </span>
-              <span data-scene-port="out" class="scene-port text-success" style="left: 72%; top: 50%">
-              </span>
+              <%!-- The station: Station.Warehouse drawn as the pipeline it is,
+                    left to right. Every number and tile inside is written by
+                    the hook from the snapshot - this whole section is behind
+                    phx-update="ignore", so what the server renders here is
+                    only the frame. --%>
+              <div data-scene-station class="scene-station" style="left: 50%; top: 50%; width: 56%">
+                <StationArt.hull class="scene-station-art" />
 
-              <div class="scene-actor" style="left: 50%; top: 50%; width: 48%">
-                <span class="absolute -top-8 left-1/2 -translate-x-1/2 font-pixel text-sm text-primary/70">
-                  WAREHOUSE
-                </span>
-                <Sprites.station_hub class="w-full text-primary" />
-                <div
-                  data-scene-bay
-                  class="scene-bay text-primary"
-                  style="left: 30.5%; top: 39%; width: 39%; height: 32%; grid-template-columns: repeat(16, 1fr); grid-auto-rows: 1fr"
+                <section
+                  class="scene-stage"
+                  data-stage="intake"
+                  style={style(StationArt.window(:intake))}
                 >
-                </div>
+                  <h3>INTAKE</h3>
+                  <p class="scene-stage-figure">
+                    <b data-scene-waiting class="text-warning">0</b>
+                    <span>waiting</span>
+                  </p>
+                </section>
+
+                <section
+                  class="scene-stage"
+                  data-stage="inspection"
+                  style={style(StationArt.window(:inspection))}
+                >
+                  <h3>INSPECTION</h3>
+                  <div data-scene-lanes class="scene-lanes text-primary"></div>
+                  <p class="scene-stage-figure">
+                    <b data-scene-lane-count class="text-primary">1</b>
+                    <span data-scene-lane-label>clerk</span>
+                  </p>
+                </section>
+
+                <section
+                  class="scene-stage scene-stage-hold"
+                  data-stage="warehouse"
+                  style={style(StationArt.window(:warehouse))}
+                >
+                  <h3>
+                    WAREHOUSE
+                    <span class="scene-stage-count">
+                      <span data-scene-hold-count>0 / 0</span>
+                      <span data-scene-memory class="text-primary">0 B</span>
+                    </span>
+                  </h3>
+                  <div data-scene-hold class="scene-hold"></div>
+                </section>
+
+                <section
+                  class="scene-stage"
+                  data-stage="outbound"
+                  style={style(StationArt.window(:outbound))}
+                >
+                  <h3>OUTBOUND</h3>
+                  <p class="scene-stage-figure">
+                    <b data-scene-hauled class="text-primary">0</b>
+                    <span>hauled</span>
+                  </p>
+                </section>
+
+                <%!-- The docking pads: invisible targets the hook flies crates
+                      to. The rings themselves are in the art. --%>
+                <span
+                  data-scene-port="in"
+                  class="scene-port text-primary"
+                  style={style(StationArt.pad(:in))}
+                >
+                </span>
+                <span
+                  data-scene-port="out"
+                  class="scene-port text-primary"
+                  style={style(StationArt.pad(:out))}
+                >
+                </span>
+              </div>
+
+              <%!-- The one fact about the room rather than the warehouse. --%>
+              <div data-scene-docked class="scene-badge">
+                <span>DOCKED</span>
+                <b data-scene-docked-count>0/0</b>
               </div>
 
               <div data-scene-actors class="absolute inset-0"></div>
-            </section>
-
-            <section class="grid grid-cols-4 gap-2">
-              <.readout
-                label="DOCKED"
-                value={"#{length(@ships)}/#{@capacity}"}
-                tone="text-secondary"
-              />
-              <.readout
-                label="WAREHOUSE QUEUE"
-                value={format_count(@stats.queue)}
-                tone={if(@congested?, do: "text-error", else: "text-base-content")}
-              />
-              <.readout
-                label="WAREHOUSE STATE"
-                value={format_count(@stats.stored)}
-                hint={"of #{format_count(@warehouse_capacity)}"}
-                tone={if(@full?, do: "text-error", else: "text-primary")}
-              />
-              <.readout
-                label="WAREHOUSE MEMORY"
-                value={format_bytes(@stats.memory)}
-                hint={"#{format_count(@stats.dropped)} jettisoned"}
-                tone="text-primary"
-              />
             </section>
           </div>
 

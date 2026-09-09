@@ -88,6 +88,7 @@ defmodule StationWeb do
       alias Phoenix.LiveView.JS
       alias StationWeb.Layouts
       alias StationWeb.Sprites
+      alias StationWeb.StationArt
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

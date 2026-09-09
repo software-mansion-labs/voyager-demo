@@ -18,9 +18,8 @@ defmodule StationWeb.StationOpsLiveTest do
     {:ok, _view, html} = live(conn, ~p"/tv")
 
     assert html =~ "freighter_01"
-    assert html =~ "3/#{Station.DockingBay.capacity()}"
     refute html =~ "freighters"
-    assert %{"ships" => ships} = scene(html)
+    assert %{"ships" => ships, "docked" => 3} = scene(html)
     assert length(ships) == 3
   end
 
@@ -37,6 +36,23 @@ defmodule StationWeb.StationOpsLiveTest do
   end
 
   describe "the scene payload" do
+    test "carries the hold tile by tile and the lanes the mode has", %{conn: conn} do
+      [container] = Station.Cargo.build_hold("ice", 1)
+      Station.Warehouse.accept(nil, container)
+      :sys.get_state(Station.Warehouse)
+
+      {:ok, view, html} = live(conn, ~p"/tv")
+
+      assert %{"hold" => %{"ice" => 1, "ore" => 0}, "lanes" => 1, "mode" => "single_clerk"} =
+               scene(html)
+
+      Station.OpsPanel.set_warehouse_mode(:inspection_crew)
+      send(view.pid, :refresh)
+
+      assert %{"lanes" => lanes, "mode" => "inspection_crew"} = scene(render(view))
+      assert lanes == Station.InspectionCrew.size()
+    end
+
     test "berths are by arrival and stay put when the counts change", %{conn: conn} do
       {:ok, first} = Station.DockingBay.dock()
       {:ok, second} = Station.DockingBay.dock()

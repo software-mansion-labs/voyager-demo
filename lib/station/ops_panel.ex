@@ -100,6 +100,18 @@ defmodule Station.OpsPanel do
   @spec restart_warehouse() :: :ok
   def restart_warehouse, do: GenServer.call(__MODULE__, :restart_warehouse)
 
+  @doc """
+  Empties the warehouse and its mailbox, now.
+
+  A flush would queue behind the very backlog it is meant to remove, so this
+  stops the process through its supervisor and starts it again - an orderly
+  stop, not a crash, so it does not count towards the restart intensity the
+  way `restart_warehouse/0` does. Everything on the shelf and everything
+  waiting is gone; the leaderboard keeps every delivery.
+  """
+  @spec clear_warehouse() :: :ok
+  def clear_warehouse, do: GenServer.call(__MODULE__, :clear_warehouse)
+
   @spec reset_leaderboard() :: :ok
   def reset_leaderboard, do: GenServer.call(__MODULE__, :reset_leaderboard)
 
@@ -144,6 +156,14 @@ defmodule Station.OpsPanel do
   def handle_call(:restart_warehouse, _from, state) do
     Events.emit(:ops, "WAREHOUSE RESTART REQUESTED BY OPS", :warning)
     Process.whereis(Warehouse) |> Process.exit(:kill)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:clear_warehouse, _from, state) do
+    :ok = Supervisor.terminate_child(Station.Game, Warehouse)
+    {:ok, _pid} = Supervisor.restart_child(Station.Game, Warehouse)
+    Metrics.put(:queue, 0)
+    Events.emit(:ops, "WAREHOUSE CLEARED BY OPS", :warning)
     {:reply, :ok, state}
   end
 

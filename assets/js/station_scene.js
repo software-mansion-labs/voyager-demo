@@ -2,9 +2,11 @@
 //
 // The server sends one JSON snapshot per second: who is docked, how much each
 // of them shipped in the last second, how many haulers are on duty and how much
-// they took away, and how full the warehouse is. This hook turns that into
-// ships flying in, containers crossing the gap one at a time, haulers pulling
-// them out the other side, and a bay window filling up in the middle.
+// they took away, and what the warehouse is doing - its mailbox depth, how many
+// clerks are inspecting and how hard, and what is on the shelf, per cargo type.
+// This hook turns that into ships flying in, containers landing on the intake
+// dock, lanes lighting up as they are checksummed, one tile per container
+// filling the hold, and haulers collecting from the far side.
 //
 // Two rules keep it honest and cheap:
 //
@@ -13,17 +15,16 @@
 //     station moves a few hundred containers a second and a booth television
 //     cannot draw that many. Past the cap the counters do the talking.
 
-const LEFT_PORT = { x: 28, y: 50 };
-const RIGHT_PORT = { x: 72, y: 50 };
-
 // Inner column first: berths fill in order of arrival, visitors before
 // freighters, so the people are nearest the station and a ship keeps its
 // place for as long as it is docked. The inner column stops well short of the
 // station's hull, so the containers have a stretch of open space to cross.
-const SHIP_COLUMNS = [17, 7];
-const HAULER_COLUMNS = [88, 78];
+const SHIP_COLUMNS = [15, 5];
+const HAULER_COLUMNS = [86, 94];
 const BERTH_SPACING = 14;
-const BERTH_SPREAD = 76;
+// Rows run from 16% to 84% of the scene: the DOCKED badge sits above the
+// column and the top berth's label must not run into it.
+const BERTH_SPREAD = 68;
 
 // A column takes eight before the next one opens: two columns is the cap.
 // Past that the rows are closer together than a ship is tall, and the names
@@ -32,12 +33,18 @@ const PER_COLUMN = 8;
 
 const SHIP_WIDTH = 5.5;
 
-// Roughly what a name costs under a ship: font, padding and the gap above it.
-const LABEL_HEIGHT = 15;
+// What a name costs under a ship: 12px font, 4px padding, 4px gap, and a
+// little air before the next hull.
+const LABEL_HEIGHT = 24;
 
 const MAX_CRATES_IN_FLIGHT = 90;
 const MAX_CRATES_PER_SHIP_PER_TICK = 5;
 const FLIGHT_MS = 850;
+
+// How long a lane stays lit after a tick that saw it work, and how many lanes
+// the panel will draw before the count alone has to say the rest.
+const LANE_BUSY_MS = 950;
+const MAX_LANES = 12;
 
 const CARGO_COLOR = {
   ice: "text-info",
@@ -49,7 +56,18 @@ const CARGO_COLOR = {
 export const StationScene = {
   mounted() {
     this.actors = this.el.querySelector("[data-scene-actors]");
-    this.bay = this.el.querySelector("[data-scene-bay]");
+    this.station = this.el.querySelector("[data-scene-station]");
+    this.hold = this.el.querySelector("[data-scene-hold]");
+    this.lanes = this.el.querySelector("[data-scene-lanes]");
+    this.figures = {
+      memory: this.el.querySelector("[data-scene-memory]"),
+      waiting: this.el.querySelector("[data-scene-waiting]"),
+      laneCount: this.el.querySelector("[data-scene-lane-count]"),
+      laneLabel: this.el.querySelector("[data-scene-lane-label]"),
+      holdCount: this.el.querySelector("[data-scene-hold-count]"),
+      hauled: this.el.querySelector("[data-scene-hauled]"),
+      docked: this.el.querySelector("[data-scene-docked-count]"),
+    };
     this.ports = {
       in: this.el.querySelector('[data-scene-port="in"]'),
       out: this.el.querySelector('[data-scene-port="out"]'),
@@ -57,12 +75,15 @@ export const StationScene = {
 
     this.ships = new Map();
     this.haulers = [];
+    this.laneEls = [];
+    this.tiles = new Map();
+    this.holdCapacity = 0;
+    this.outgoing = [];
     this.pickupTurn = 0;
     this.inFlight = 0;
     this.crates = new Map();
     this.timers = new Set();
 
-    this.buildBay();
     this.apply();
   },
 
@@ -89,10 +110,25 @@ export const StationScene = {
     this.sweepCrates();
     this.syncShips(state.ships);
     this.syncHaulers(state.haulers);
-    this.paintBay(state.stored, state.full);
+    this.paintStation(state);
+
+    // The docks live on the station's walls, so where a crate is headed is
+    // read off the page rather than written down as a constant.
+    this.dock = { in: this.locate(this.ports.in), out: this.locate(this.ports.out) };
 
     state.ships.forEach((ship) => this.launchCrates(ship));
     this.launchPickups(state.haulerDelta, state.haulers);
+  },
+
+  // The cargo type the next outgoing crate is drawn in. The hook does not know
+  // which container a hauler took, but it knows which types just left the
+  // shelf, and the crates cycle through those - so cargo is its own colour
+  // on the way out as well as on the way in.
+  outgoingTone() {
+    if (this.outgoing.length === 0) return "text-primary";
+
+    const type = this.outgoing[this.pickupTurn % this.outgoing.length];
+    return CARGO_COLOR[type] || "text-primary";
   },
 
   // --- ships -------------------------------------------------------------
@@ -138,9 +174,7 @@ export const StationScene = {
     el.dataset.lane = berth.lane;
 
     // The name is the whole reason a visitor is looking at this screen, so it
-    // is never truncated. Instead the two columns hang their labels on opposite
-    // sides of the ship, so a long name can run as wide as it likes without
-    // colliding with its neighbour.
+    // is never truncated: it sits under the ship and runs as wide as it likes.
     el.innerHTML = `
       <div class="scene-hover relative" style="animation-delay: ${Math.round(berth.y * 13) % 2400}ms">
         <span class="scene-thruster"></span>
@@ -215,7 +249,7 @@ export const StationScene = {
     for (let n = 0; n < count; n++) {
       this.after(Math.round(n * gap), () => {
         const nose = { x: known.berth.x + 2.5, y: known.berth.y };
-        this.flyCrate(nose, LEFT_PORT, CARGO_COLOR[ship.cargo] || "");
+        this.flyCrate(nose, this.dock.in, CARGO_COLOR[ship.cargo] || "");
       });
     }
   },
@@ -235,16 +269,15 @@ export const StationScene = {
         if (!target) return;
 
         this.flyCrate(
-          RIGHT_PORT,
+          this.dock.out,
           { x: parseFloat(target.style.left), y: parseFloat(target.style.top) },
-          "text-success",
-          "out",
+          this.outgoingTone(),
         );
       });
     }
   },
 
-  flyCrate(from, to, tone, port = "in") {
+  flyCrate(from, to, tone) {
     // A hidden tab freezes both timers and animations, so a screensaver or a
     // window in front of the television would otherwise fill the scene with
     // crates that never arrive and never clean up.
@@ -276,22 +309,11 @@ export const StationScene = {
       if (!this.crates.delete(el)) return;
       el.remove();
       this.inFlight--;
-      this.flashPort(port);
     };
 
     this.crates.set(el, done);
     animation.onfinish = done;
     animation.oncancel = done;
-  },
-
-  // A short flare where the cargo lands. Under load it stays lit, which is
-  // exactly what a port moving forty containers a second should look like.
-  flashPort(which) {
-    const el = this.ports[which];
-    if (!el) return;
-
-    el.classList.add("is-hot");
-    this.after(140, () => el.classList.remove("is-hot"));
   },
 
   // Belt and braces: anything still in the air well past its flight time never
@@ -305,34 +327,102 @@ export const StationScene = {
     });
   },
 
-  // --- the bay -------------------------------------------------------------
+  // --- the station -------------------------------------------------------
 
-  buildBay() {
-    this.bayCells = [];
+  paintStation(state) {
+    const stored = Object.values(state.hold).reduce((sum, count) => sum + count, 0);
 
-    for (let n = 0; n < 96; n++) {
-      const cell = document.createElement("span");
-      this.bay.appendChild(cell);
-      this.bayCells.push(cell);
-    }
+    this.figures.memory.textContent = formatBytes(state.memory);
+    this.figures.waiting.textContent = formatCount(state.waiting);
+    this.figures.hauled.textContent = formatCount(state.hauled);
+    this.figures.holdCount.textContent = `${formatCount(stored)} / ${formatCount(state.capacity)}`;
+    this.figures.laneCount.textContent = formatCount(state.lanes);
+    this.figures.laneLabel.textContent = state.lanes === 1 ? "clerk" : "clerks";
+    this.figures.docked.textContent = `${state.docked}/${state.berths}`;
+
+    // The mailbox depth turns red at the same line the phones call congested.
+    this.figures.waiting.classList.toggle("text-error", Boolean(state.congested));
+    this.figures.waiting.classList.toggle("text-warning", !state.congested);
+
+    this.station.classList.toggle("is-full", Boolean(state.full));
+
+    this.sizeHold(state.capacity);
+    this.syncLanes(state.lanes, state.inspectedDelta);
+    this.syncHold(state.hold);
   },
 
-  // What the warehouse is holding, drawn inside the station's own bay window.
-  // The first container lights the first cell - rounding to nearest left the
-  // window dark for the first sixty deliveries, which read as cargo vanishing.
-  // Red means full: the oldest cargo is going over the side.
-  paintBay(ratio, full) {
-    const clamped = Math.min(Math.max(ratio, 0), 1);
-    const filled = clamped > 0 ? Math.max(1, Math.ceil(clamped * this.bayCells.length)) : 0;
+  // One cell per container the warehouse can hold, in a grid shaped like the
+  // window it fills. The tiles flow down columns from the outbound wall, so the
+  // row count is what fixes the layout; the columns follow from the capacity.
+  // Recomputed only when the capacity changes, which is a config edit and a
+  // restart.
+  sizeHold(capacity) {
+    if (capacity === this.holdCapacity) return;
 
-    this.bay.classList.toggle("text-error", full);
-    this.bay.classList.toggle("text-primary", !full);
+    this.holdCapacity = capacity;
+    const box = this.hold.getBoundingClientRect();
+    const ratio = box.width > 0 && box.height > 0 ? box.width / box.height : 4;
+    const rows = gridRows(Math.max(capacity, 1), ratio);
+    const columns = Math.max(1, Math.ceil(capacity / rows));
+    this.hold.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    this.hold.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+  },
 
-    // Filled from the bottom up, the way a warehouse actually fills.
-    const floor = this.bayCells.length - filled;
+  // One lane per clerk on shift. A tick that inspected N containers lights N
+  // lanes for a moment; under load the single clerk's lane never goes dark.
+  syncLanes(count, inspected) {
+    const wanted = Math.min(count, MAX_LANES);
 
-    this.bayCells.forEach((cell, index) => {
-      cell.style.opacity = index >= floor ? "1" : "0.08";
+    while (this.laneEls.length > wanted) {
+      this.laneEls.pop().remove();
+    }
+
+    while (this.laneEls.length < wanted) {
+      const el = document.createElement("div");
+      el.className = "scene-lane";
+      el.innerHTML = this.sprite("container");
+      this.lanes.appendChild(el);
+      this.laneEls.push(el);
+    }
+
+    const busy = Math.min(inspected, this.laneEls.length);
+
+    this.laneEls.forEach((el, index) => {
+      if (index >= busy) return;
+
+      el.classList.add("is-busy");
+      clearTimeout(el.busyTimer);
+      el.busyTimer = setTimeout(() => el.classList.remove("is-busy"), LANE_BUSY_MS);
+    });
+  },
+
+  // One tile per container on the shelf, in its cargo colour. Only the
+  // difference is touched: a tick adds a few tiles and takes a few away, and
+  // the oldest of a type goes first, the way the warehouse's own queue works.
+  // The types that shrank this tick are what the outgoing crates are drawn in.
+  syncHold(hold) {
+    this.outgoing = [];
+
+    Object.entries(hold).forEach(([type, count]) => {
+      let tiles = this.tiles.get(type);
+
+      if (!tiles) {
+        tiles = [];
+        this.tiles.set(type, tiles);
+      }
+
+      if (tiles.length > count) this.outgoing.push(type);
+
+      while (tiles.length > count) {
+        tiles.shift().remove();
+      }
+
+      while (tiles.length < count) {
+        const el = document.createElement("span");
+        el.className = `scene-tile ${CARGO_COLOR[type] || "text-base-content"}`;
+        this.hold.appendChild(el);
+        tiles.push(el);
+      }
     });
   },
 
@@ -351,19 +441,32 @@ export const StationScene = {
 
     const lane = Math.min(column, lanes - 1);
 
-    // The second column sits half a row lower than the first, so a long name in
-    // one column falls into the gap between two ships of the other instead of
-    // across a neighbour's label.
+    // Columns share their rows exactly: a name belongs to the ship straight
+    // above it, and a stagger would set it beside a ship in the next column.
     return {
       lane,
       spacing,
       x: columns[lane],
-      y: 50 + (row - (perColumn - 1) / 2) * spacing + (lane % 2) * spacing * 0.5,
+      y: 50 + (row - (perColumn - 1) / 2) * spacing,
     };
   },
 
   sprite(name) {
     return `<svg viewBox="0 0 16 16" class="pixelated w-full"><use href="#sprite-${name}"></use></svg>`;
+  },
+
+  // Where an element sits, as a percentage of the scene - the coordinate
+  // system every flight is drawn in.
+  locate(el) {
+    const scene = this.el.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+
+    if (!scene.width || !scene.height) return { x: 50, y: 50 };
+
+    return {
+      x: ((box.left + box.width / 2 - scene.left) / scene.width) * 100,
+      y: ((box.top + box.height / 2 - scene.top) / scene.height) * 100,
+    };
   },
 
   after(delay, fun) {
@@ -375,6 +478,37 @@ export const StationScene = {
     this.timers.add(timer);
   },
 };
+
+// A row count near the one the window's shape asks for that divides the
+// capacity exactly, so a full warehouse is a full grid with no empty slots in
+// the last column. Falls back to the nearest count when nothing divides.
+function gridRows(capacity, ratio) {
+  const ideal = Math.max(1, Math.round(Math.sqrt(capacity / ratio)));
+
+  for (let offset = 0; offset <= ideal; offset++) {
+    for (const rows of [ideal - offset, ideal + offset]) {
+      if (rows >= 1 && capacity % rows === 0) return rows;
+    }
+  }
+
+  return ideal;
+}
+
+// The same units and rounding as the server's format_bytes, so a number on
+// the station matches the same number on a phone.
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+
+  if (value < 1024) return `${Math.round(value)} B`;
+  if (value < 1048576) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1073741824) return `${(value / 1048576).toFixed(1)} MB`;
+  return `${(value / 1073741824).toFixed(2)} GB`;
+}
+
+// Thousands grouped with a space, the way the phones do it.
+function formatCount(value) {
+  return String(Math.trunc(Number(value || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => {
