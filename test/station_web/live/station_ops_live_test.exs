@@ -45,21 +45,21 @@ defmodule StationWeb.StationOpsLiveTest do
   end
 
   describe "the scene payload" do
-    test "carries the hold tile by tile and the lanes the mode has", %{conn: conn} do
+    test "carries the hold tile by tile and one lane per clerk on shift", %{conn: conn} do
       [container] = Station.Cargo.build_hold("ice", 1)
       Station.Warehouse.accept(nil, container)
-      :sys.get_state(Station.Warehouse)
+      settle()
 
       {:ok, view, html} = live(conn, ~p"/tv")
 
-      assert %{"hold" => %{"ice" => 1, "ore" => 0}, "lanes" => 1, "mode" => "single_clerk"} =
-               scene(html)
+      assert %{"hold" => %{"ice" => 1, "ore" => 0}, "lanes" => 1} = scene(html)
 
-      Station.OpsPanel.set_warehouse_mode(:inspection_crew)
+      Station.OpsPanel.set_clerks(Station.OpsPanel.default_clerks())
       send(view.pid, :refresh)
 
-      assert %{"lanes" => lanes, "mode" => "inspection_crew"} = scene(render(view))
+      assert %{"lanes" => lanes} = scene(render(view))
       assert lanes == Station.InspectionCrew.size()
+      assert lanes > 1
     end
 
     test "berths are by arrival and stay put when the counts change", %{conn: conn} do

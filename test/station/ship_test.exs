@@ -97,6 +97,64 @@ defmodule Station.ShipTest do
     assert is_pid(Process.whereis(ship))
   end
 
+  # A berth belongs to somebody in front of the screen. When the cockpit process
+  # dies and nothing boards again, the ship parks its notes and undocks - and
+  # the same session docking again gets the same name and the same counters.
+  test "a cockpit that goes dark parks the ship, and it docks again as itself", %{ship: ship} do
+    slug = Station.ShipNames.to_slug(ship)
+    hold_size = Station.Cargo.hold_size()
+
+    :ok = Ship.transfer(ship)
+    drain(ship)
+
+    crew = spawn(fn -> Process.sleep(:infinity) end)
+    :ok = Ship.board(ship, crew)
+    drain(ship)
+
+    ref = Process.monitor(Process.whereis(ship))
+    Process.exit(crew, :kill)
+
+    assert_receive {:DOWN, ^ref, :process, _, :normal}, 1_000
+    assert Station.Hangar.parked?(slug)
+    assert DockingBay.list() == []
+
+    # The name is spoken for while the visitor is away.
+    assert slug in Enum.map(DockingBay.taken(), &Station.ShipNames.to_slug/1)
+
+    assert {:ok, ^ship} = DockingBay.dock(slug)
+    assert %{delivered: 1, hold: hold} = Ship.status(ship)
+    assert hold == hold_size - 1
+    refute Station.Hangar.parked?(slug)
+  end
+
+  test "a cockpit that comes back inside the grace keeps the ship docked", %{ship: ship} do
+    first = spawn(fn -> Process.sleep(:infinity) end)
+    :ok = Ship.board(ship, first)
+    drain(ship)
+
+    ref = Process.monitor(Process.whereis(ship))
+    Process.exit(first, :kill)
+
+    # A reload: a new cockpit boards before the grace runs out.
+    second = spawn(fn -> Process.sleep(:infinity) end)
+    :ok = Ship.board(ship, second)
+
+    grace = Application.fetch_env!(:station, :ship_leave_grace_ms)
+    refute_receive {:DOWN, ^ref, :process, _, _}, grace * 3
+    assert is_pid(Process.whereis(ship))
+    refute Station.Hangar.parked?(Station.ShipNames.to_slug(ship))
+
+    Process.exit(second, :kill)
+  end
+
+  test "a ship nobody has boarded is not parked by anybody else's exit", %{ship: ship} do
+    ref = Process.monitor(Process.whereis(ship))
+    grace = Application.fetch_env!(:station, :ship_leave_grace_ms)
+
+    refute_receive {:DOWN, ^ref, :process, _, _}, grace * 3
+    refute Station.Hangar.parked?(Station.ShipNames.to_slug(ship))
+  end
+
   test "talking to a ship that has already left does not blow up", %{ship: ship} do
     Ship.undock(ship)
     assert {:error, :gone} = Ship.transfer(ship)

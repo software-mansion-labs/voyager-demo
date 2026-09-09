@@ -22,7 +22,6 @@ defmodule Station.OpsPanel do
   @type traffic :: atom() | non_neg_integer()
 
   @type settings :: %{
-          warehouse_mode: Warehouse.mode(),
           clerks: pos_integer(),
           haulers: non_neg_integer(),
           freighters: non_neg_integer(),
@@ -48,9 +47,6 @@ defmodule Station.OpsPanel do
   @spec settings() :: settings()
   def settings, do: :persistent_term.get(@term_key, defaults())
 
-  @spec warehouse_mode() :: Warehouse.mode()
-  def warehouse_mode, do: settings().warehouse_mode
-
   @doc "How many haulers are on duty."
   @spec haulers() :: non_neg_integer()
   def haulers, do: settings().haulers
@@ -58,7 +54,7 @@ defmodule Station.OpsPanel do
   @spec max_haulers() :: pos_integer()
   def max_haulers, do: @max_haulers
 
-  @doc "How many clerks inspect when the crew is on shift."
+  @doc "How many clerks are on shift."
   @spec clerks() :: pos_integer()
   def clerks, do: settings().clerks
 
@@ -96,18 +92,12 @@ defmodule Station.OpsPanel do
   @spec traffic_levels() :: %{atom() => non_neg_integer()}
   def traffic_levels, do: Application.fetch_env!(:station, :traffic_levels)
 
-  @spec set_warehouse_mode(Warehouse.mode()) :: :ok
-  def set_warehouse_mode(mode) when mode in [:single_clerk, :inspection_crew] do
-    GenServer.call(__MODULE__, {:set_warehouse_mode, mode})
-  end
-
   @doc """
   How many clerks inspect cargo.
 
-  One clerk is the warehouse process doing its own checksums - the bottleneck.
-  Two or more is the inspection crew, that many clerks on shift, and the
-  warehouse only routing. A crew size is remembered, so going back to one
-  clerk and then `set_warehouse_mode(:inspection_crew)` brings the same crew.
+  Always clerk processes, never the warehouse itself. One is the bottleneck:
+  every container waits in one mailbox while the warehouse only routes. More
+  spread the load across the schedulers and the queue drains.
   """
   @spec set_clerks(pos_integer()) :: :ok
   def set_clerks(count) when is_integer(count) and count >= 1 and count <= @max_clerks do
@@ -202,6 +192,13 @@ defmodule Station.OpsPanel do
   @spec reset_leaderboard() :: :ok
   def reset_leaderboard, do: GenServer.call(__MODULE__, :reset_leaderboard)
 
+  @doc """
+  Undocks every visitor's ship now, and forgets the ones waiting in the hangar.
+  Their visitors get a fresh ship on the next scan. Cargo and counters stay.
+  """
+  @spec undock_visitors() :: :ok
+  def undock_visitors, do: GenServer.call(__MODULE__, :undock_visitors)
+
   @doc "Back to a clean station: no ships, no cargo, counters at zero. The fleet stays."
   @spec reset_station() :: :ok
   def reset_station, do: GenServer.call(__MODULE__, :reset_station)
@@ -212,24 +209,13 @@ defmodule Station.OpsPanel do
     {:ok, %{}}
   end
 
+  # The warehouse reads who is on shift per container, straight from the crew's
+  # own term, so the new shift takes the very next container - including the
+  # ones already queued behind the switch.
   @impl true
-  def handle_call({:set_warehouse_mode, mode}, _from, state) do
-    apply_warehouse_mode(mode)
-    Events.emit(:ops, "WAREHOUSE MODE -> #{mode |> to_string() |> String.upcase()}")
-    {:reply, :ok, state}
-  end
-
-  # One clerk is a mode, not a crew size: the remembered crew survives it, so
-  # the mode switch on its own brings the same people back.
-  def handle_call({:set_clerks, 1}, _from, state) do
-    apply_warehouse_mode(:single_clerk)
-    Events.emit(:ops, "INSPECTION -> 1 CLERK")
-    {:reply, :ok, state}
-  end
-
   def handle_call({:set_clerks, count}, _from, state) do
+    InspectionCrew.staff(count)
     update(:clerks, count)
-    apply_warehouse_mode(:inspection_crew)
     Events.emit(:ops, "INSPECTION -> #{count} #{if count == 1, do: "CLERK", else: "CLERKS"}")
     {:reply, :ok, state}
   end
@@ -280,14 +266,22 @@ defmodule Station.OpsPanel do
 
   def handle_call(:clear_warehouse, _from, state) do
     # Warehouse first, so nothing new is routed; then the crew, whose
-    # mailboxes are where the backlog lives when they are on shift - a fresh
-    # shift of the same size, empty-handed; then the warehouse comes back.
+    # mailboxes are where the backlog lives - a fresh shift of the same size,
+    # empty-handed; then the warehouse comes back.
     :ok = Supervisor.terminate_child(Station.Game, Warehouse)
-    if warehouse_mode() == :inspection_crew, do: InspectionCrew.staff(max(clerks(), 2))
+    InspectionCrew.staff(clerks())
     {:ok, _pid} = Supervisor.restart_child(Station.Game, Warehouse)
     Metrics.put(:queue, 0)
     Metrics.put(:inspection_queue, 0)
     Events.emit(:ops, "WAREHOUSE AND QUEUES CLEARED BY OPS", :warning)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:undock_visitors, _from, state) do
+    docked = Station.DockingBay.count()
+    Station.DockingBay.clear()
+    Station.Hangar.clear()
+    Events.emit(:ops, "#{docked} VISITOR SHIPS UNDOCKED BY OPS", :warning)
     {:reply, :ok, state}
   end
 
@@ -305,27 +299,13 @@ defmodule Station.OpsPanel do
     {:reply, :ok, state}
   end
 
-  # The warehouse reads this setting per container, so the order here is the
-  # order that never leaves it routing cargo at a crew which is not there: put
-  # the crew on shift before the switch, and take it off after.
-  defp apply_warehouse_mode(:inspection_crew) do
-    InspectionCrew.staff(max(clerks(), 2))
-    update(:warehouse_mode, :inspection_crew)
-  end
-
-  defp apply_warehouse_mode(:single_clerk) do
-    update(:warehouse_mode, :single_clerk)
-    InspectionCrew.dismiss()
-  end
-
   defp update(key, value), do: settings() |> Map.put(key, value) |> put()
 
   defp put(settings), do: :persistent_term.put(@term_key, settings)
 
   defp defaults do
     %{
-      warehouse_mode: Application.fetch_env!(:station, :warehouse_mode),
-      clerks: default_clerks(),
+      clerks: Application.fetch_env!(:station, :clerks),
       haulers: Application.fetch_env!(:station, :haulers),
       freighters: Application.fetch_env!(:station, :freighters),
       yield_to_visitors: Application.fetch_env!(:station, :yield_to_visitors),

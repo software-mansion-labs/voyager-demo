@@ -25,7 +25,7 @@ defmodule StationWeb.CockpitLive do
     case DockController.current_ship(session) do
       nil ->
         socket
-        |> put_flash(:info, "Your ship has left the station. Docking a fresh one.")
+        |> put_flash(:info, gone_notice(session))
         |> redirect(to: ~p"/")
         |> ok()
 
@@ -33,6 +33,9 @@ defmodule StationWeb.CockpitLive do
         if connected?(socket) do
           :timer.send_interval(@refresh, :refresh)
           Phoenix.PubSub.subscribe(Station.PubSub, Ship.topic(ShipNames.to_slug(ship)))
+          # From here the ship watches this process: when the phone goes dark
+          # for good, the ship parks itself and frees the berth.
+          Ship.board(ship, self())
         end
 
         socket
@@ -110,6 +113,14 @@ defmodule StationWeb.CockpitLive do
         |> assign(:congested?, stats.backlog >= congestion_threshold())
         |> assign(:rank, Leaderboard.rank(status.slug))
     end
+  end
+
+  # The ship is gone, but the reason decides what the next page says: a ship
+  # that parked itself while the phone was dark comes straight back.
+  defp gone_notice(session) do
+    if DockController.returning?(session),
+      do: "Welcome back. Docking your ship again.",
+      else: "Your ship has left the station. Docking a fresh one."
   end
 
   defp congestion_threshold do

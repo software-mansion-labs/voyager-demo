@@ -5,33 +5,36 @@ defmodule StationWeb.DockController do
   Scanning the code lands on `/`, which docks a ship there and then - a name
   from the pool, a cargo type by lot - puts it in the session and sends the
   phone to the cockpit. The only thing between a visitor and the button is the
-  redirect. Leaving undocks the ship and shows what it did, with one button
-  back to a fresh one.
+  redirect. A session whose ship parked itself in the hangar while the phone
+  was dark gets that same ship back. Leaving undocks the ship for good and
+  shows what it did, with one button back to a fresh one.
   """
 
   use StationWeb, :controller
 
   alias Station.DockingBay
+  alias Station.Hangar
   alias Station.Leaderboard
   alias Station.ShipNames
 
   def new(conn, _params) do
     case current_ship(conn) do
-      nil -> dock(conn)
+      nil -> dock(conn, get_session(conn, :ship))
       _name -> redirect(conn, to: ~p"/ship")
     end
   end
 
   def delete(conn, _params) do
+    slug = get_session(conn, :ship)
     ship = current_ship(conn)
     if ship, do: Station.Ship.undock(ship)
-
-    slug = ship && ShipNames.to_slug(ship)
+    # Leaving on purpose forgets the parked notes too: next scan is a fresh ship.
+    Hangar.discard(slug)
 
     conn
     |> delete_session(:ship)
     |> assign(:page_title, "UNDOCKED · VOYAGER STATION")
-    |> assign(:ship, ship)
+    |> assign(:ship, ship || parked_name(slug))
     |> assign(:row, slug && Leaderboard.get(slug))
     |> assign(:rank, slug && Leaderboard.rank(slug))
     |> render(:farewell)
@@ -48,6 +51,13 @@ defmodule StationWeb.DockController do
   def current_ship(%{"ship" => slug}), do: lookup(slug)
   def current_ship(_), do: nil
 
+  # A ship that was already waiting in the hangar still gets its farewell.
+  defp parked_name(slug) when is_binary(slug) do
+    if slug in ShipNames.pool(), do: ShipNames.to_process_name(slug), else: nil
+  end
+
+  defp parked_name(_), do: nil
+
   defp lookup(nil), do: nil
 
   defp lookup(slug) do
@@ -57,8 +67,14 @@ defmodule StationWeb.DockController do
     ArgumentError -> nil
   end
 
-  defp dock(conn) do
-    case DockingBay.dock() do
+  @doc "Whether this session's ship is waiting in the hangar for it to come back."
+  @spec returning?(Plug.Conn.t() | map()) :: boolean()
+  def returning?(%Plug.Conn{} = conn), do: conn |> get_session(:ship) |> Hangar.parked?()
+  def returning?(%{"ship" => slug}), do: Hangar.parked?(slug)
+  def returning?(_), do: false
+
+  defp dock(conn, returning) do
+    case DockingBay.dock(returning) do
       {:ok, registered} ->
         conn
         |> put_session(:ship, ShipNames.to_slug(registered))

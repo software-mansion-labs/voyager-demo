@@ -33,6 +33,47 @@ defmodule StationWeb.DockControllerTest do
     assert length(DockingBay.list()) == 1
   end
 
+  test "a visitor whose phone went dark gets the same ship back on the next scan",
+       %{conn: conn} do
+    {conn, name} = with_ship(conn)
+    slug = ShipNames.to_slug(name)
+    :ok = Station.Ship.transfer(name)
+    :sys.get_state(Process.whereis(name))
+
+    # The cockpit process dies and stays dead: the ship parks itself.
+    crew = spawn(fn -> Process.sleep(:infinity) end)
+    :ok = Station.Ship.board(name, crew)
+    ref = Process.monitor(Process.whereis(name))
+    Process.exit(crew, :kill)
+    assert_receive {:DOWN, ^ref, :process, _, :normal}, 1_000
+    assert DockingBay.list() == []
+
+    conn = get(conn, ~p"/")
+
+    assert redirected_to(conn) == ~p"/ship"
+    assert get_session(conn, :ship) == slug
+    assert [^name] = DockingBay.list()
+    assert %{delivered: 1} = Station.Ship.status(name)
+  end
+
+  test "leaving on purpose forgets the parked ship too", %{conn: conn} do
+    {conn, name} = with_ship(conn)
+    slug = ShipNames.to_slug(name)
+
+    crew = spawn(fn -> Process.sleep(:infinity) end)
+    :ok = Station.Ship.board(name, crew)
+    ref = Process.monitor(Process.whereis(name))
+    Process.exit(crew, :kill)
+    assert_receive {:DOWN, ^ref, :process, _, :normal}, 1_000
+    assert Station.Hangar.parked?(slug)
+
+    conn = get(conn, ~p"/leave")
+
+    assert html_response(conn, 200) =~ to_string(name)
+    refute Station.Hangar.parked?(slug)
+    assert get_session(conn, :ship) == nil
+  end
+
   test "undocking stops the process, clears the session and offers a way back", %{conn: conn} do
     {conn, name} = with_ship(conn)
     ref = Process.monitor(Process.whereis(name))

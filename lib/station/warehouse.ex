@@ -6,21 +6,22 @@ defmodule Station.Warehouse do
 
     * every container arrives as a `cast`, so a fast clicker piles up
       `message_queue_len` instead of blocking on a call
-    * every container is inspected (checksummed) before it is accepted, so the
-      work is real and shows up as reductions
+    * every container is inspected (checksummed) by a clerk before it is
+      accepted, so the work is real and shows up as reductions - on the clerk
     * every accepted container is kept in process state, so memory grows into
       the fat process the whole industry hunts for in production
 
-  In `:single_clerk` mode the inspection runs here, in this process, and the
-  queue climbs into the hundreds. In `:inspection_crew` mode this process only
-  routes work to `Station.InspectionCrew` and merges the results, the queue
-  drains in front of the audience and the load spreads across every scheduler.
+  This process only routes: each container goes to the next clerk in
+  `Station.InspectionCrew` and comes back checksummed to be stored. With one
+  clerk on shift the queue climbs into the hundreds in that clerk's mailbox;
+  with a crew it drains in front of the audience and the load spreads across
+  every scheduler.
 
-  Which mode it is in is read per container from `Station.OpsPanel`, never held
-  in this process's state. A container costs half a second to clear, so a switch
-  arriving as a message would sit behind the backlog it is meant to fix: at a
-  queue of a hundred, ops would press the button and watch nothing happen for a
-  minute. Read from a persistent term, the very next container goes to the crew.
+  Who is on shift is read per container from a persistent term, never held in
+  this process's state. A container costs half a second to clear, so a shift
+  change arriving as a message would sit behind the backlog it is meant to fix:
+  at a queue of a hundred, ops would press the button and watch nothing happen
+  for a minute. Read from the term, the very next container goes to the new crew.
   """
 
   use GenServer
@@ -30,9 +31,6 @@ defmodule Station.Warehouse do
   alias Station.InspectionCrew
   alias Station.Leaderboard
   alias Station.Metrics
-  alias Station.OpsPanel
-
-  @type mode :: :single_clerk | :inspection_crew
 
   @gc_threshold 8 * 1024 * 1024
 
@@ -59,7 +57,7 @@ defmodule Station.Warehouse do
   @spec collect(pid(), pos_integer()) :: :ok
   def collect(hauler, count), do: GenServer.cast(__MODULE__, {:collect, hauler, count})
 
-  @doc "Result coming back from a clerk, in `:inspection_crew` mode."
+  @doc "Result coming back from a clerk."
   @spec inspected(String.t(), Cargo.container()) :: :ok
   def inspected(ship, container), do: GenServer.cast(__MODULE__, {:inspected, ship, container})
 
@@ -107,8 +105,8 @@ defmodule Station.Warehouse do
     %{
       alive?: Process.whereis(__MODULE__) != nil,
       queue: Metrics.get(:queue),
-      # Containers routed to the crew and not yet checksummed. Zero with a
-      # single clerk; with a crew this is where the queue went.
+      # Containers handed to the clerks and not yet checksummed: with one
+      # clerk on shift, this is the bottleneck's queue.
       inspection_queue: Metrics.get(:inspection_queue),
       backlog: Metrics.get(:queue) + Metrics.get(:inspection_queue),
       memory: Metrics.get(:warehouse_memory),
@@ -118,8 +116,7 @@ defmodule Station.Warehouse do
       accepted: Metrics.get(:accepted),
       inspected: Metrics.get(:inspected),
       dropped: Metrics.get(:dropped),
-      collected: Metrics.get(:collected),
-      mode: OpsPanel.warehouse_mode()
+      collected: Metrics.get(:collected)
     }
   end
 
@@ -149,7 +146,7 @@ defmodule Station.Warehouse do
 
   @impl true
   def handle_cast({:accept, ship, container}, state) do
-    {:noreply, route(state, ship, container, crew())}
+    {:noreply, route(state, ship, container, InspectionCrew.on_shift())}
   end
 
   def handle_cast({:inspected, ship, container}, state) do
@@ -180,15 +177,9 @@ defmodule Station.Warehouse do
     {:noreply, %{state | cargo: :queue.new(), count: 0, bytes: 0}}
   end
 
-  # An empty crew is both modes' fallback: single clerk by choice, and
-  # inspection crew in the moment before anybody has been put on shift.
-  defp crew do
-    case OpsPanel.warehouse_mode() do
-      :inspection_crew -> InspectionCrew.on_shift()
-      :single_clerk -> {}
-    end
-  end
-
+  # Nobody on shift - the instant of a shift change, or the crew's supervisor
+  # restarting. Rather than drop the container, the warehouse checks this one
+  # itself; the next one goes to a clerk again.
   defp route(state, ship, container, {}) do
     _checksum = Cargo.inspect_container(container)
     Metrics.add(:inspected, 1)

@@ -39,7 +39,7 @@ defmodule StationWeb.CockpitLiveTest do
     send(view.pid, :refresh)
 
     assert view |> element("#hold-grid") |> render() =~ ~s(data-hold="#{hold_size - 1}")
-    :sys.get_state(Station.Warehouse)
+    settle()
     assert Metrics.get(:accepted) == 1
   end
 
@@ -77,6 +77,26 @@ defmodule StationWeb.CockpitLiveTest do
 
     assert render(view) =~ "TRANSFER CARGO"
     assert view |> element("#hold-grid") |> render() =~ ~s(data-hold="#{Cargo.hold_size()}")
+  end
+
+  test "opening the cockpit boards the ship, so the ship knows when the phone goes dark",
+       %{conn: conn} do
+    {conn, name} = with_ship(conn)
+    {:ok, view, _html} = live(conn, ~p"/ship")
+
+    :sys.get_state(Process.whereis(name))
+    assert %{crew: {pid, _ref}} = :sys.get_state(Process.whereis(name))
+    assert pid == view.pid
+  end
+
+  test "a returning visitor is told their ship is coming back, not that it left",
+       %{conn: conn} do
+    {conn, name} = with_ship(conn)
+    Station.Hangar.park(:sys.get_state(Process.whereis(name)))
+    Station.Ship.undock(name)
+
+    assert {:error, {:redirect, %{to: "/", flash: flash}}} = live(conn, ~p"/ship")
+    assert flash["info"] =~ "Docking your ship again"
   end
 
   test "a ship removed by ops takes its visitor back to registration", %{conn: conn} do

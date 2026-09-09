@@ -35,6 +35,8 @@ config :station,
   # The ramp is instant in tests - the suite asserts on flow, not on pacing.
   ship_load_ms: 0,
   ship_queue_cap: 5,
+  # A dark cockpit parks its ship almost at once - the suite kills views by hand.
+  ship_leave_grace_ms: 50,
   # Freighters never tick on their own in tests - the suite sends :tick by hand.
   freighter_interval_ms: :timer.hours(1),
   freighter_resupply_ms: :timer.hours(1),

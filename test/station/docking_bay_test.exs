@@ -61,6 +61,38 @@ defmodule Station.DockingBayTest do
     assert DockingBay.list() == []
   end
 
+  test "a name in the hangar is never handed to somebody else" do
+    {:ok, name} = DockingBay.dock()
+    slug = ShipNames.to_slug(name)
+
+    park(name)
+    assert Station.Hangar.parked?(slug)
+
+    # Every free name but the parked one, and the draw must still avoid it.
+    for _ <- 1..50 do
+      assert {:ok, drawn} = ShipNames.pick(DockingBay.taken())
+      assert drawn != slug
+    end
+  end
+
+  test "a parked ship is forgotten after the same silence that ends a docked one" do
+    original = Application.fetch_env!(:station, :ship_ttl_ms)
+    Application.put_env(:station, :ship_ttl_ms, 30)
+    on_exit(fn -> Application.put_env(:station, :ship_ttl_ms, original) end)
+
+    {:ok, name} = DockingBay.dock()
+    slug = ShipNames.to_slug(name)
+    park(name)
+
+    Process.sleep(60)
+    refute Station.Hangar.parked?(slug)
+    assert Station.Hangar.slugs() == []
+
+    # Coming back too late is a fresh ship, not an error.
+    assert {:ok, fresh} = DockingBay.dock(slug)
+    assert %{delivered: 0} = Ship.status(fresh)
+  end
+
   test "undocking leaves nothing behind but the leaderboard row" do
     {:ok, name} = DockingBay.dock()
     :ok = Ship.transfer(name)
@@ -73,5 +105,16 @@ defmodule Station.DockingBayTest do
 
     assert Process.whereis(name) == nil
     assert %{containers: 1} = Station.Leaderboard.get(ShipNames.to_slug(name))
+  end
+
+  # A cockpit boards, then dies; the ship parks itself after the grace.
+  defp park(name) do
+    crew = spawn(fn -> Process.sleep(:infinity) end)
+    :ok = Ship.board(name, crew)
+    :sys.get_state(Process.whereis(name))
+
+    ref = Process.monitor(Process.whereis(name))
+    Process.exit(crew, :kill)
+    assert_receive {:DOWN, ^ref, :process, _, :normal}, 1_000
   end
 end

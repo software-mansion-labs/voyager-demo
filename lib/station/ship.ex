@@ -18,6 +18,12 @@ defmodule Station.Ship do
   make every caller queue behind the cargo, so the ship publishes its state to
   an ETS table after every event and `status/1` reads that - plus the queue and
   memory, which `Process.info/2` reads from outside for free.
+
+  The cockpit that flies this ship boards it (`board/2`) and the ship monitors
+  that process. When the cockpit goes dark and stays dark past
+  `:ship_leave_grace_ms`, the ship leaves its notes in `Station.Hangar` and
+  undocks - a berth belongs to somebody standing in front of the screen, not to
+  a phone in a pocket. The same session scanning again docks it back.
   """
 
   use GenServer, restart: :temporary
@@ -25,6 +31,7 @@ defmodule Station.Ship do
   alias Station.Cargo
   alias Station.DockingBay
   alias Station.Events
+  alias Station.Hangar
   alias Station.Metrics
   alias Station.ShipNames
   alias Station.Warehouse
@@ -87,12 +94,21 @@ defmodule Station.Ship do
     end
   end
 
+  @doc """
+  A cockpit takes the controls. The ship watches this process from now on and
+  parks itself once it has been gone for the grace period; a reload or a wifi
+  blip that comes back inside it changes nothing.
+  """
+  @spec board(atom(), pid()) :: :ok | {:error, :gone}
+  def board(name, crew) when is_pid(crew), do: press(name, {:board, crew})
+
   @impl true
   def init(opts) do
     Process.flag(:trap_exit, true)
 
     name = Keyword.fetch!(opts, :name)
     cargo_type = Keyword.fetch!(opts, :cargo_type)
+    parked = Keyword.get(opts, :restore)
 
     state = %{
       name: name,
@@ -107,11 +123,26 @@ defmodule Station.Ship do
       docked_at: System.system_time(:second),
       # Order of arrival, node-wide and never equal: the television hands out
       # berths by it, and a berth must not move when a clock does.
-      berth: :erlang.unique_integer([:monotonic, :positive])
+      berth: :erlang.unique_integer([:monotonic, :positive]),
+      # The cockpit flying this ship, as {pid, monitor ref}, and the timer that
+      # parks the ship once that cockpit has been dark for long enough.
+      crew: nil,
+      leaving: nil
     }
 
+    state = if parked, do: restore(state, parked), else: state
+
     Metrics.add(:ships_docked, 1)
-    Events.emit(:dock, "#{name} DOCKED - #{String.upcase(cargo_type)}")
+
+    if parked do
+      Events.emit(
+        :dock,
+        "#{name} DOCKED AGAIN - #{String.upcase(cargo_type)}, #{state.delivered} DELIVERED SO FAR"
+      )
+    else
+      Events.emit(:dock, "#{name} DOCKED - #{String.upcase(cargo_type)}")
+    end
+
     publish(state)
 
     {:ok, state, ttl()}
@@ -164,9 +195,29 @@ defmodule Station.Ship do
     {:noreply, %{state | last_press: now_ms()}, remaining(state)}
   end
 
+  # A cockpit at the controls. A second one - a reload, a reconnect, another
+  # tab - simply replaces the first; whichever is watching last is the crew.
+  def handle_cast({:board, pid}, state) do
+    state = state |> cancel_leaving() |> watch(pid)
+    {:noreply, state, remaining(state)}
+  end
+
   @impl true
   def handle_info(:timeout, state) do
     Events.emit(:undock, "#{state.name} DRIFTED OFF - IDLE TIMEOUT")
+    {:stop, :normal, state}
+  end
+
+  # The cockpit went dark. Not undocked yet: a reload boards again within the
+  # grace and nothing happened. Only silence past it is a visitor who left.
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{crew: {_crew, ref}} = state) do
+    timer = Process.send_after(self(), :crew_gone, grace_ms())
+    {:noreply, %{state | crew: nil, leaving: timer}, remaining(state)}
+  end
+
+  def handle_info(:crew_gone, %{crew: nil} = state) do
+    Hangar.park(state)
+    Events.emit(:undock, "#{state.name} CREW OFFLINE - WAITING IN THE HANGAR")
     {:stop, :normal, state}
   end
 
@@ -178,6 +229,32 @@ defmodule Station.Ship do
     Metrics.add(:ships_undocked, 1)
     Events.emit(:undock, "#{state.name} UNDOCKED - #{state.delivered} CONTAINERS DELIVERED")
     :ok
+  end
+
+  # Back from the hangar: same name, same cargo type, same counters. The hold
+  # is rebuilt to the count it had - cargo is random bytes, nobody kept them.
+  defp restore(state, parked) do
+    %{
+      state
+      | hold: Cargo.build_hold(state.cargo_type, parked.hold_count),
+        hold_count: parked.hold_count,
+        delivered: parked.delivered,
+        refills: parked.refills
+    }
+  end
+
+  defp watch(%{crew: {_pid, old_ref}} = state, pid) do
+    Process.demonitor(old_ref, [:flush])
+    watch(%{state | crew: nil}, pid)
+  end
+
+  defp watch(state, pid), do: %{state | crew: {pid, Process.monitor(pid)}}
+
+  defp cancel_leaving(%{leaving: nil} = state), do: state
+
+  defp cancel_leaving(%{leaving: timer} = state) do
+    Process.cancel_timer(timer)
+    %{state | leaving: nil}
   end
 
   defp ship_one(%{hold: [container | rest]} = state) do
@@ -229,6 +306,8 @@ defmodule Station.Ship do
   defp remaining(state), do: max(ttl() - (now_ms() - state.last_press), 0)
 
   defp ttl, do: Application.fetch_env!(:station, :ship_ttl_ms)
+
+  defp grace_ms, do: Application.fetch_env!(:station, :ship_leave_grace_ms)
 
   defp load_ms, do: Application.fetch_env!(:station, :ship_load_ms)
 

@@ -14,6 +14,54 @@ defmodule StationWeb.OpsLiveTest do
     assert build_conn() |> get(~p"/ops") |> response(401)
   end
 
+  test "ops can undock a visitor's ship from the panel", %{conn: conn} do
+    {:ok, name} = Station.DockingBay.dock()
+    slug = Station.ShipNames.to_slug(name)
+    ref = Process.monitor(Process.whereis(name))
+
+    {:ok, view, html} = live(conn, ~p"/ops")
+    assert html =~ to_string(name)
+
+    view |> element("#undock-#{slug}") |> render_click()
+
+    assert_receive {:DOWN, ^ref, :process, _, _}
+    assert Station.DockingBay.list() == []
+    refute Station.Hangar.parked?(slug)
+    refute render(view) =~ to_string(name)
+  end
+
+  test "ops can empty every berth at once - visitors, hangar and freighters", %{conn: conn} do
+    {:ok, docked} = Station.DockingBay.dock()
+    {:ok, parked} = Station.DockingBay.dock()
+    parked_slug = Station.ShipNames.to_slug(parked)
+    Station.Hangar.park(:sys.get_state(Process.whereis(parked)))
+    Station.Ship.undock(parked)
+    :ok = OpsPanel.set_traffic(1)
+    assert Station.FreighterLine.count() == 1
+
+    {:ok, view, _html} = live(conn, ~p"/ops")
+    view |> element("#undock-everyone") |> render_click()
+    dispatched()
+
+    assert Process.whereis(docked) == nil
+    assert Station.DockingBay.list() == []
+    refute Station.Hangar.parked?(parked_slug)
+    assert OpsPanel.freighters() == 0
+    assert Station.FreighterLine.count() == 0
+  end
+
+  test "undocking all visitors leaves the freighters alone", %{conn: conn} do
+    {:ok, _first} = Station.DockingBay.dock()
+    {:ok, _second} = Station.DockingBay.dock()
+    :ok = OpsPanel.set_traffic(1)
+
+    {:ok, view, _html} = live(conn, ~p"/ops")
+    view |> element("#undock-visitors") |> render_click()
+
+    assert Station.DockingBay.list() == []
+    assert Station.FreighterLine.count() == 1
+  end
+
   test "a traffic level is one press", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/ops")
 
@@ -43,7 +91,7 @@ defmodule StationWeb.OpsLiveTest do
   test "clearing the warehouse empties the shelf and the queue, not the board", %{conn: conn} do
     [container] = Station.Cargo.build_hold("ice", 1)
     Station.Warehouse.accept("nostromo", container)
-    :sys.get_state(Station.Warehouse)
+    settle()
     assert Station.Metrics.get(:stored) == 1
 
     pid = Process.whereis(Station.Warehouse)
@@ -81,21 +129,17 @@ defmodule StationWeb.OpsLiveTest do
     assert Enum.all?(after_pids, &(&1 not in before))
   end
 
-  test "clerks are a button or a number, and one clerk is the single clerk", %{conn: conn} do
+  test "clerks are a button or a number, and one clerk is still a clerk", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/ops")
 
     view |> form("#clerks-form", clerks: %{count: "3"}) |> render_submit()
-    assert OpsPanel.warehouse_mode() == :inspection_crew
     assert Station.InspectionCrew.size() == 3
     assert OpsPanel.clerks() == 3
 
+    # One clerk is a process of its own, not the warehouse doing the job.
     view |> element("#clerks-one") |> render_click()
-    assert OpsPanel.warehouse_mode() == :single_clerk
-    assert Station.InspectionCrew.size() == 0
-
-    # The count is remembered: the mode switch alone brings the same crew back.
-    OpsPanel.set_warehouse_mode(:inspection_crew)
-    assert Station.InspectionCrew.size() == 3
+    assert OpsPanel.clerks() == 1
+    assert [:clerk_01] = Station.InspectionCrew.workers()
 
     view |> element("#clerks-default") |> render_click()
     assert Station.InspectionCrew.size() == OpsPanel.default_clerks()

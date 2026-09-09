@@ -86,8 +86,7 @@ docker compose exec station bin/station remote
 | Call                                            | What it is for                                        |
 | ----------------------------------------------- | ----------------------------------------------------- |
 | `OpsPanel.set_traffic(:normal)`                 | simulated visitors for a quiet aisle - see below      |
-| `OpsPanel.set_warehouse_mode(:inspection_crew)` | the bottleneck demo, and its fix                      |
-| `OpsPanel.set_clerks(8)`                        | how many inspect, up to 8; `1` is the single clerk (also on `/ops`) |
+| `OpsPanel.set_clerks(8)`                        | how many clerks inspect, up to 8; `1` is the bottleneck demo, more is its fix (also on `/ops`) |
 | `OpsPanel.set_haulers(12)` or `set_hauler_boost(4)` | the producer/consumer demo, and its fix (also on `/ops`) |
 | `OpsPanel.set_show_qr(false)`                   | take the QR codes off the television (also on `/ops`)  |
 | `OpsPanel.set_freighter_interval(1000)`         | ms between a freighter's containers (also on `/ops`)   |

@@ -13,7 +13,7 @@ defmodule StationWeb.StationOpsLive do
 
   None of it is decoration. Every crate in flight is a delivery that actually
   happened in the last second, every tile is a container really on the shelf,
-  and the lanes are the warehouse mode ops just switched. The hold goes red when
+  and the lanes are the clerks ops just put on shift. The hold goes red when
   the warehouse is full and jettisoning. The visitor watches it here and then
   confirms every bit of it in Voyager, two feet to the left.
 
@@ -109,11 +109,7 @@ defmodule StationWeb.StationOpsLive do
   defp scene(ships, stats, fleet, capacity, full?, previous) do
     delivered = Map.new(ships, &{&1.name, &1.delivered})
 
-    lanes =
-      case stats.mode do
-        :inspection_crew -> max(InspectionCrew.size(), 1)
-        :single_clerk -> 1
-      end
+    lanes = max(InspectionCrew.size(), 1)
 
     # Berths are handed out in order of arrival and kept: a ship that moves is
     # a ship somebody loses track of, and the whole point of the screen is to
@@ -143,7 +139,6 @@ defmodule StationWeb.StationOpsLive do
       docked: length(ships),
       berths: DockingBay.capacity(),
       lanes: lanes,
-      mode: stats.mode,
       inspectedDelta: delta(previous && previous.inspected, stats.inspected),
       # One tile per container, by type and in the cargo colours. The hold is
       # ordered by type on purpose: the truth the tiles carry is what is on the

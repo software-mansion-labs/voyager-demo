@@ -19,13 +19,16 @@ defmodule Station.Case do
     Station.OpsPanel.set_traffic(0)
     Station.OpsPanel.set_yield_to_visitors(false)
     Station.DockingBay.clear()
-    # Flush is a cast; wait for it, or a container still in the mailbox lands
-    # on the freshly zeroed counters of the next test.
+    Station.Hangar.clear()
+    # Drain everything in flight - warehouse, clerks, warehouse again - then
+    # flush and drain once more, or a container still with a clerk lands on the
+    # freshly zeroed counters of the next test.
+    Station.Case.settle()
     Station.Warehouse.flush()
-    _ = :sys.get_state(Station.Warehouse)
+    Station.Case.settle()
     Station.Leaderboard.reset()
     Station.Metrics.reset()
-    Station.OpsPanel.set_clerks(Station.OpsPanel.default_clerks())
+    Station.OpsPanel.set_clerks(1)
     Station.OpsPanel.set_show_qr(true)
     Station.OpsPanel.set_haulers(Application.fetch_env!(:station, :haulers))
 
@@ -34,12 +37,20 @@ defmodule Station.Case do
     )
 
     Station.OpsPanel.set_hauler_interval(Application.fetch_env!(:station, :hauler_interval_ms))
-    Station.OpsPanel.set_warehouse_mode(:single_clerk)
     :ok
   end
 
-  @doc "Blocks until the warehouse has worked through its mailbox."
+  @doc """
+  Blocks until every container in flight is stored: through the warehouse,
+  through each clerk on shift, and back through the warehouse.
+  """
   def settle do
+    :sys.get_state(Station.Warehouse)
+
+    for clerk <- Station.InspectionCrew.workers(), pid = Process.whereis(clerk), is_pid(pid) do
+      :sys.get_state(pid)
+    end
+
     :sys.get_state(Station.Warehouse)
     :ok
   end

@@ -18,6 +18,12 @@ config :station,
   # on the screen.
   max_ships: 8,
   ship_ttl_ms: :timer.minutes(5),
+  # A cockpit that goes dark undocks its ship after this long: enough for a
+  # page reload or a wifi hiccup to reconnect unnoticed, short enough that a
+  # locked phone frees its berth before the next visitor has read the QR code.
+  # The ship waits in `Station.Hangar` for `ship_ttl_ms` and docks again, same
+  # name and counters, when that session comes back.
+  ship_leave_grace_ms: :timer.seconds(5),
   # One click removes exactly one box from the grid on the phone, so this is
   # also the size of that grid.
   hold_size: 120,
@@ -74,15 +80,16 @@ config :station,
   },
 
   # --- warehouse -------------------------------------------------------------
-  warehouse_mode: :single_clerk,
   # Containers held before the oldest go over the side. Sized so the bay window
   # on the television (96 cells) lights a cell every dozen containers or so and
   # a rush hour with the crew on fills it in minutes, not an afternoon. The
   # jettison line on the wall is the payoff - it has to be reachable.
   warehouse_capacity: 1_200,
-  # Crew size for `set_warehouse_mode(:inspection_crew)` when unset: one clerk
-  # per scheduler, capped at eight.
-  clerks: nil,
+  # Clerks on shift when the station boots. Checksums always happen in clerk
+  # processes, never in the warehouse itself; one clerk is the bottleneck demo,
+  # and `OpsPanel.set_clerks/1` (or /ops) puts more on shift. The CREW button
+  # on /ops is one per scheduler, capped at eight.
+  clerks: 1,
 
   # --- haulers ---------------------------------------------------------------
   # The consumers. Deliberately few and slow at x1, so a room that has filled

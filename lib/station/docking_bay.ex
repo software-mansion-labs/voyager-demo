@@ -22,6 +22,7 @@ defmodule Station.DockingBay do
   alias Station.Dispatcher
   alias Station.Events
   alias Station.FreighterLine
+  alias Station.Hangar
   alias Station.OpsPanel
   alias Station.Ship
   alias Station.ShipNames
@@ -48,16 +49,25 @@ defmodule Station.DockingBay do
   def status_table, do: @status
 
   @doc """
-  Docks a new ship under a generated name with a random cargo type.
+  Docks a ship. A new one under a generated name with a random cargo type - or,
+  given the slug of a ship waiting in `Station.Hangar`, that ship again, with
+  the name and counters it left with.
 
   Returns the registered process name, which is the string the visitor then
   hunts for on the big screen.
   """
-  @spec dock() :: {:ok, atom()} | {:error, dock_error()}
-  def dock do
-    with :ok <- check_capacity(),
-         {:ok, slug} <- ShipNames.pick(list()) do
-      start(ShipNames.to_process_name(slug), Enum.random(Cargo.types()))
+  @spec dock(String.t() | nil) :: {:ok, atom()} | {:error, dock_error()}
+  def dock(returning \\ nil) do
+    with :ok <- check_capacity() do
+      case returning && Hangar.take(returning) do
+        {:ok, parked} ->
+          start(ShipNames.to_process_name(parked.slug), parked.cargo_type, restore: parked)
+
+        _ ->
+          with {:ok, slug} <- ShipNames.pick(taken()) do
+            start(ShipNames.to_process_name(slug), Enum.random(Cargo.types()))
+          end
+      end
     end
   end
 
@@ -88,6 +98,14 @@ defmodule Station.DockingBay do
     end)
     |> Enum.reverse()
   end
+
+  @doc """
+  Every name not up for grabs: docked ships and the ones waiting in the hangar.
+  A visitor on the phone for a minute comes back to their own name, not to
+  somebody else flying it.
+  """
+  @spec taken() :: [atom() | String.t()]
+  def taken, do: list() ++ Hangar.slugs()
 
   @doc "Ops kicking one ship off the station."
   @spec remove(atom()) :: :ok
@@ -126,8 +144,9 @@ defmodule Station.DockingBay do
 
   # Two phones can pick the same free name in the same instant; the second
   # start fails on the registered name and tries again with a fresh draw.
-  defp start(name, cargo_type, attempts \\ 3) do
-    spec = {Ship, name: name, cargo_type: cargo_type}
+  defp start(name, cargo_type, opts \\ []) do
+    attempts = Keyword.get(opts, :attempts, 3)
+    spec = {Ship, [name: name, cargo_type: cargo_type] ++ Keyword.take(opts, [:restore])}
 
     case DynamicSupervisor.start_child(__MODULE__, spec) do
       {:ok, _pid} -> {:ok, name}
@@ -138,8 +157,8 @@ defmodule Station.DockingBay do
   end
 
   defp retry(cargo_type, attempts) do
-    case ShipNames.pick(list()) do
-      {:ok, slug} -> start(ShipNames.to_process_name(slug), cargo_type, attempts)
+    case ShipNames.pick(taken()) do
+      {:ok, slug} -> start(ShipNames.to_process_name(slug), cargo_type, attempts: attempts)
       :error -> {:error, :no_names}
     end
   end

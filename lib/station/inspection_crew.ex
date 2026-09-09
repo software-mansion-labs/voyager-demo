@@ -2,15 +2,22 @@ defmodule Station.InspectionCrew do
   @moduledoc """
   The pool of clerks the warehouse delegates checksums to.
 
-  Empty in `:single_clerk` mode and populated in `:inspection_crew` mode, so
-  flipping the switch in /ops makes the process count jump in Voyager while the
-  warehouse queue drains. That visible jump is the point - the supervisor node
-  stays in the tree either way, only its child counter moves.
+  Every container is checksummed by a clerk, never by the warehouse itself. One
+  clerk on shift is the bottleneck demo: a single mailbox every container waits
+  in. Putting more on shift in /ops makes the process count jump in Voyager
+  while that queue drains across the schedulers. That visible jump is the
+  point - the supervisor node stays in the tree either way, only its child
+  counter moves.
+
+  The crew staffs itself to `Station.OpsPanel.clerks/0` as it starts, so a boot
+  or a supervisor restart never leaves the warehouse with nobody to hand cargo
+  to.
   """
 
   use DynamicSupervisor
 
   alias Station.Clerk
+  alias Station.OpsPanel
 
   # The crew is published here as well as held by the supervisor, because the
   # warehouse asks who is on shift once per container and must never wait on a
@@ -20,16 +27,19 @@ defmodule Station.InspectionCrew do
   @term_key {__MODULE__, :on_shift}
 
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts), do: DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts) do
+    with {:ok, pid} <- DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__) do
+      staff(OpsPanel.clerks())
+      {:ok, pid}
+    end
+  end
 
   @impl true
   def init(_opts), do: DynamicSupervisor.init(strategy: :one_for_one)
 
-  @doc "Default pool size: one clerk per scheduler, unless config says otherwise."
+  @doc "The crew the CREW button puts on: one clerk per scheduler."
   @spec default_size() :: pos_integer()
-  def default_size do
-    Application.get_env(:station, :clerks) || System.schedulers_online()
-  end
+  def default_size, do: System.schedulers_online()
 
   @doc "Registered names of the clerks currently on shift."
   @spec workers() :: [atom()]
@@ -48,8 +58,9 @@ defmodule Station.InspectionCrew do
   @doc """
   The crew as a tuple, readable without sending anyone a message.
 
-  Empty when the crew is off shift, which is also what the warehouse falls back
-  on before ops has touched anything.
+  Empty only for the instant between a shift change's dismissal and its first
+  new clerk, or while this supervisor is restarting; the warehouse checks a
+  container itself then rather than lose it.
   """
   @spec on_shift() :: tuple()
   def on_shift, do: :persistent_term.get(@term_key, {})

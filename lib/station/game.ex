@@ -26,6 +26,7 @@ defmodule Station.Game do
   def init(_opts) do
     children = [
       Station.Leaderboard,
+      Station.Hangar,
       Station.InspectionCrew,
       Station.Warehouse,
       Station.DockingBay,

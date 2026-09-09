@@ -7,10 +7,18 @@ defmodule Station.WarehouseTest do
   alias Station.OpsPanel
   alias Station.Warehouse
 
-  test "an accepted container is inspected, stored and scored" do
+  test "an accepted container is inspected by a clerk, stored and scored" do
+    # Never the warehouse itself: one clerk on shift, and the checksum is theirs.
+    assert Station.InspectionCrew.size() == 1
+    [clerk] = Station.InspectionCrew.workers()
+    {:reductions, before} = Process.info(Process.whereis(clerk), :reductions)
+
     [container] = Cargo.build_hold("ore", 1)
     Warehouse.accept("nostromo", container)
     settle()
+
+    {:reductions, after_} = Process.info(Process.whereis(clerk), :reductions)
+    assert after_ > before, "the clerk on shift did no work on the container"
 
     assert Metrics.get(:accepted) == 1
     assert Metrics.get(:inspected) == 1
@@ -46,8 +54,8 @@ defmodule Station.WarehouseTest do
     assert %{"ice" => 0, "ore" => 0} = Warehouse.shelf()
   end
 
-  test "with a crew on, the backlog is in the clerks' mailboxes and gets counted there" do
-    OpsPanel.set_warehouse_mode(:inspection_crew)
+  test "the backlog is in the clerks' mailboxes and gets counted there" do
+    OpsPanel.set_clerks(OpsPanel.default_clerks())
 
     clerks =
       Station.InspectionCrew.on_shift() |> Tuple.to_list() |> Enum.map(&Process.whereis/1)
@@ -80,9 +88,9 @@ defmodule Station.WarehouseTest do
     assert %{"machinery" => 3} = Warehouse.collected()
   end
 
-  test "the inspection crew does the checksums instead, and the count still adds up" do
-    OpsPanel.set_warehouse_mode(:inspection_crew)
-    assert Station.InspectionCrew.size() > 0
+  test "a whole crew does the checksums, and the count still adds up" do
+    OpsPanel.set_clerks(OpsPanel.default_clerks())
+    assert Station.InspectionCrew.size() > 1
 
     deliver("nostromo", "ore", 5)
 
@@ -98,7 +106,7 @@ defmodule Station.WarehouseTest do
     :sys.suspend(Warehouse)
     for container <- Cargo.build_hold("ore", 4), do: Warehouse.accept("nostromo", container)
 
-    OpsPanel.set_warehouse_mode(:inspection_crew)
+    OpsPanel.set_clerks(OpsPanel.default_clerks())
     crew = Station.InspectionCrew.workers()
     Enum.each(crew, &:sys.suspend/1)
 
@@ -116,7 +124,6 @@ defmodule Station.WarehouseTest do
   test "stats never send the warehouse a message" do
     stats = Warehouse.stats()
     assert stats.alive?
-    assert stats.mode == :single_clerk
     assert is_integer(stats.queue)
   end
 

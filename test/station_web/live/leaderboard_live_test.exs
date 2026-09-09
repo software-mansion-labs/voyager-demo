@@ -9,7 +9,7 @@ defmodule StationWeb.LeaderboardLiveTest do
 
     Warehouse.accept("nostromo", container)
     Warehouse.accept(nil, container)
-    :sys.get_state(Warehouse)
+    settle()
 
     {:ok, _view, html} = live(conn, ~p"/leaderboard")
 
