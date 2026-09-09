@@ -107,7 +107,7 @@ defmodule StationWeb.CockpitLive do
         |> assign(:hold, status.hold)
         |> assign(:delivered, status.delivered)
         |> assign(:stats, stats)
-        |> assign(:congested?, stats.queue >= congestion_threshold())
+        |> assign(:congested?, stats.backlog >= congestion_threshold())
         |> assign(:rank, Leaderboard.rank(status.slug))
     end
   end
@@ -149,48 +149,17 @@ defmodule StationWeb.CockpitLive do
           </div>
         </header>
 
-        <%!-- The same thing the television shows, at arm's length: the
-              container leaves this ship and crosses to the station. A throttled
-              press turns back short of the door, so backpressure is something
-              the visitor watches as well as feels. --%>
-        <%!-- The congestion notice lies on top of the flight strip instead of
-              taking a row of its own: it appears exactly when a thumb is going
-              fastest, and any band of pixels entering the layout at that moment
-              moves the button out from under that thumb mid-press. --%>
-        <div class="relative shrink-0">
+        <%!-- A fixed-height line, whether or not it says anything: the
+              congestion notice appears exactly when a thumb is going fastest,
+              and any band of pixels entering the layout at that moment moves
+              the button out from under that thumb mid-press. --%>
+        <div class="flex h-8 shrink-0 items-center">
           <div
             :if={@congested?}
-            class="pixel-panel absolute inset-x-2 top-2 z-10 flex items-center border-error/70 bg-error/10 px-3 py-2 font-pixel text-[10px] text-error animate-blink"
+            class="pixel-panel flex w-full items-center border-error/70 bg-error/10 px-3 py-1 font-pixel text-[10px] text-error animate-blink"
           >
-            STATION CONGESTED - QUEUE: {format_count(@stats.queue)}
+            STATION CONGESTED - QUEUE: {format_count(@stats.backlog)}
           </div>
-
-          <section
-            id="cockpit-flight"
-            phx-hook=".Flight"
-            phx-update="ignore"
-            class="scene pixel-panel relative h-14"
-          >
-            <div class="scene-stars scene-stars-far"></div>
-
-            <div
-              class={["scene-actor w-12", Sprites.cargo_color(@status.cargo_type)]}
-              style="left: 14%; top: 50%"
-            >
-              <div class="scene-hover relative">
-                <span class="scene-thruster"></span>
-                <Sprites.ship class="w-full" />
-              </div>
-            </div>
-
-            <span data-flight-port class="scene-port text-primary" style="left: 74%; top: 50%"></span>
-
-            <div class="scene-actor w-24 text-primary" style="left: 84%; top: 50%">
-              <Sprites.station_hub class="w-full" />
-            </div>
-
-            <div data-flight-lane class="absolute inset-0"></div>
-          </section>
         </div>
 
         <section class="pixel-panel flex min-h-24 flex-1 flex-col p-3">
@@ -241,7 +210,7 @@ defmodule StationWeb.CockpitLive do
           <.readout label="DELIVERED" value={format_count(@delivered)} tone="text-success" />
           <.readout
             label="WH QUEUE"
-            value={format_count(@stats.queue)}
+            value={format_count(@stats.backlog)}
             tone={queue_tone(@congested?)}
           />
           <.readout label="MEMORY" value={format_bytes(@stats.memory)} tone="text-primary" />
@@ -266,55 +235,6 @@ defmodule StationWeb.CockpitLive do
           </.link>
         </div>
       </div>
-
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".Flight">
-        export default {
-          mounted() {
-            this.lane = this.el.querySelector("[data-flight-lane]");
-            this.port = this.el.querySelector("[data-flight-port]");
-            this.tone = (this.el.querySelector(".scene-actor").className.match(/text-\S+/) || ["text-primary"])[0];
-
-            this.handleEvent("station:transferred", ({refilled}) => !refilled && this.launch(true));
-            this.handleEvent("station:throttled", () => this.launch(false));
-          },
-
-          // One press, one container, one crossing.
-          launch(arrives) {
-            const crate = document.createElement("div");
-            crate.className = `scene-crate w-5 ${arrives ? this.tone : "text-warning"}`;
-            crate.style.left = "22%";
-            crate.style.top = "50%";
-            crate.innerHTML = `<svg viewBox="0 0 16 16" class="pixelated w-full"><use href="#sprite-container"></use></svg>`;
-            this.lane.appendChild(crate);
-
-            const frames = arrives
-              ? [
-                  {left: "22%", top: "50%", opacity: 0.4},
-                  {left: "48%", top: "34%", opacity: 1, offset: 0.5},
-                  {left: "74%", top: "50%", opacity: 1},
-                ]
-              : [
-                  {left: "22%", top: "50%", opacity: 0.4},
-                  {left: "42%", top: "42%", opacity: 1, offset: 0.5},
-                  {left: "24%", top: "62%", opacity: 0},
-                ];
-
-            const animation = crate.animate(frames, {duration: 520, easing: "steps(14, end)"});
-
-            animation.onfinish = () => {
-              crate.remove();
-              if (!arrives) { return; }
-
-              this.port.classList.add("is-hot");
-              setTimeout(() => this.port.classList.remove("is-hot"), 140);
-            };
-
-            // A backgrounded tab can swallow the finish event, and a phone in a
-            // pocket is a backgrounded tab. Bound the leak.
-            setTimeout(() => crate.remove(), 1500);
-          }
-        }
-      </script>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Hold">
         export default {

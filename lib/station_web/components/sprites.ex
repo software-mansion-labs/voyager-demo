@@ -22,7 +22,7 @@ defmodule StationWeb.Sprites do
   @spec cargo_color(String.t()) :: String.t()
   def cargo_color("ice"), do: "text-info"
   def cargo_color("ore"), do: "text-primary"
-  def cargo_color("machinery"), do: "text-warning"
+  def cargo_color("machinery"), do: "text-success"
   def cargo_color("antimatter"), do: "text-accent"
   def cargo_color(_), do: "text-base-content"
 
@@ -145,8 +145,8 @@ defmodule StationWeb.Sprites do
           <rect x="14" y="8" width="1" height="1" fill="var(--sprite-ink)" />
           <rect x="3" y="9" width="2" height="1" fill="var(--sprite-ink)" />
           <rect x="5" y="9" width="1" height="1" fill="var(--sprite-lit)" />
-          <rect x="6" y="9" width="8" height="1" fill="currentColor" />
-          <rect x="14" y="9" width="1" height="1" fill="var(--sprite-ink)" />
+          <rect x="6" y="9" width="9" height="1" fill="currentColor" />
+          <rect x="15" y="9" width="1" height="1" fill="var(--sprite-ink)" />
           <rect x="5" y="10" width="1" height="1" fill="var(--sprite-ink)" />
           <rect x="6" y="10" width="7" height="1" fill="var(--sprite-lit)" />
           <rect x="13" y="10" width="1" height="1" fill="currentColor" />

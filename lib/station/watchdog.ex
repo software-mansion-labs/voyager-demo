@@ -14,6 +14,7 @@ defmodule Station.Watchdog do
   use GenServer
 
   alias Station.Events
+  alias Station.InspectionCrew
   alias Station.Metrics
   alias Station.Warehouse
 
@@ -29,6 +30,8 @@ defmodule Station.Watchdog do
     {:ok, %{panicking?: false, calm_ticks: 0}}
   end
 
+  defp schedule, do: Process.send_after(self(), :sample, @interval)
+
   @impl true
   def handle_info(:sample, state) do
     sample()
@@ -36,7 +39,17 @@ defmodule Station.Watchdog do
     {:noreply, guard(state)}
   end
 
-  defp sample do
+  @doc """
+  Takes one sample now. The timer does this twice a second; tests call it.
+
+  Two queues are read, because the backlog moves. With a single clerk it sits
+  in the warehouse's own mailbox. With a crew on, routing a container is
+  nearly free and the warehouse mailbox stays empty while the clerks'
+  mailboxes fill - the same congestion, one process further down the tree,
+  and the television has to show it there or it shows nothing.
+  """
+  @spec sample() :: :ok
+  def sample do
     case Process.whereis(Warehouse) do
       nil ->
         Metrics.put(:queue, 0)
@@ -49,16 +62,32 @@ defmodule Station.Watchdog do
         Metrics.put(:warehouse_reductions, Keyword.get(info, :reductions, 0))
     end
 
+    Metrics.put(:inspection_queue, inspection_queue())
     Metrics.put(:run_queue, :erlang.statistics(:total_run_queue_lengths))
     Metrics.put(:process_count, :erlang.system_info(:process_count))
     Metrics.put(:atom_count, :erlang.system_info(:atom_count))
+  end
+
+  defp inspection_queue do
+    InspectionCrew.on_shift()
+    |> Tuple.to_list()
+    |> Enum.map(&Process.whereis/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(fn pid ->
+      case Process.info(pid, :message_queue_len) do
+        {:message_queue_len, len} -> len
+        nil -> 0
+      end
+    end)
+    |> Enum.sum()
   end
 
   defp guard(state) do
     limits = Application.fetch_env!(:station, :watchdog)
 
     drowning? =
-      Metrics.get(:queue) > limits[:max_queue] or Metrics.get(:run_queue) > limits[:max_run_queue]
+      Metrics.get(:queue) + Metrics.get(:inspection_queue) > limits[:max_queue] or
+        Metrics.get(:run_queue) > limits[:max_run_queue]
 
     cond do
       drowning? and not state.panicking? ->
@@ -77,6 +106,4 @@ defmodule Station.Watchdog do
         %{state | calm_ticks: 0}
     end
   end
-
-  defp schedule, do: Process.send_after(self(), :sample, @interval)
 end

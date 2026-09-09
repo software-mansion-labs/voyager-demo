@@ -8,8 +8,8 @@ defmodule Station.DockingBay do
   visitor is a process in the tree before the page has finished loading.
 
   It owns the two decisions that keep that safe. The live ship cap is set for
-  the human eye, not for the runtime - sixteen ships is two full columns on a
-  television, and the BEAM would carry sixteen thousand. Freighters count
+  the human eye, not for the runtime - eight ships is one legible column on a
+  television, and the BEAM would carry eight thousand. Freighters count
   towards it like anyone else; with yield on, a station full of them still
   makes room for a person. And the atom ceiling: ship names really do become
   atoms, that really is irreversible, so every name comes from a pool whose

@@ -23,6 +23,15 @@ defmodule StationWeb.StationOpsLiveTest do
     assert length(ships) == 3
   end
 
+  test "ops can take the QR codes off the television", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/tv")
+    assert html =~ ~s(id="tv-qr")
+
+    Station.OpsPanel.set_show_qr(false)
+    send(view.pid, :refresh)
+    refute render(view) =~ ~s(id="tv-qr")
+  end
+
   test "the television carries the way in, as a code and as a line to type", %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/tv")
 

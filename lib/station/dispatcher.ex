@@ -6,7 +6,7 @@ defmodule Station.Dispatcher do
   lets warehouse memory fall while somebody watches. Freighters are the
   simulated visitors ops turns on when the aisle is quiet. This process notices
   gaps in either crew and sends replacements, and applies whatever ops last
-  asked for - the hauler boost and the freighter count.
+  asked for - the hauler count and the freighter count.
   """
 
   use GenServer
@@ -25,8 +25,8 @@ defmodule Station.Dispatcher do
 
   # Calls, not casts: when ops presses the switch the crew is on duty by the
   # time the shell prompt comes back, and a test asking for zero gets zero.
-  @spec set_hauler_boost(pos_integer()) :: :ok
-  def set_hauler_boost(factor), do: GenServer.call(__MODULE__, {:set_hauler_boost, factor})
+  @spec set_haulers(non_neg_integer()) :: :ok
+  def set_haulers(count), do: GenServer.call(__MODULE__, {:set_haulers, count})
 
   @spec set_freighters(non_neg_integer()) :: :ok
   def set_freighters(count), do: GenServer.call(__MODULE__, {:set_freighters, count})
@@ -51,12 +51,12 @@ defmodule Station.Dispatcher do
   @impl true
   def init(_opts) do
     send(self(), :tick)
-    {:ok, %{boost: OpsPanel.hauler_boost(), freighters: OpsPanel.freighters()}}
+    {:ok, %{haulers: OpsPanel.haulers(), freighters: OpsPanel.freighters()}}
   end
 
   @impl true
-  def handle_call({:set_hauler_boost, factor}, _from, state) do
-    state = %{state | boost: factor}
+  def handle_call({:set_haulers, count}, _from, state) do
+    state = %{state | haulers: count}
     reconcile(state)
     {:reply, :ok, state}
   end
@@ -85,7 +85,7 @@ defmodule Station.Dispatcher do
   end
 
   defp reconcile(state) do
-    staff(HaulerLine, Hauler, "hauler", haulers(state))
+    staff(HaulerLine, Hauler, "hauler", state.haulers)
     staff(FreighterLine, Freighter, "freighter", freighters(state))
   end
 
@@ -140,8 +140,6 @@ defmodule Station.Dispatcher do
       {String.to_integer(digits), pid}
     end
   end
-
-  defp haulers(state), do: Application.fetch_env!(:station, :haulers) * state.boost
 
   # Ninety nine names per line, minted once each: the pool is the cap.
   defp worker_name(label, index),

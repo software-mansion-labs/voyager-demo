@@ -1,6 +1,6 @@
 defmodule Station.InspectionCrew do
   @moduledoc """
-  The pool of inspectors the warehouse delegates checksums to.
+  The pool of clerks the warehouse delegates checksums to.
 
   Empty in `:single_clerk` mode and populated in `:inspection_crew` mode, so
   flipping the switch in /ops makes the process count jump in Voyager while the
@@ -10,7 +10,7 @@ defmodule Station.InspectionCrew do
 
   use DynamicSupervisor
 
-  alias Station.Inspector
+  alias Station.Clerk
 
   # The crew is published here as well as held by the supervisor, because the
   # warehouse asks who is on shift once per container and must never wait on a
@@ -25,13 +25,13 @@ defmodule Station.InspectionCrew do
   @impl true
   def init(_opts), do: DynamicSupervisor.init(strategy: :one_for_one)
 
-  @doc "Default pool size: one inspector per scheduler."
+  @doc "Default pool size: one clerk per scheduler, unless config says otherwise."
   @spec default_size() :: pos_integer()
   def default_size do
-    Application.get_env(:station, :inspectors) || System.schedulers_online()
+    Application.get_env(:station, :clerks) || System.schedulers_online()
   end
 
-  @doc "Registered names of the inspectors currently on shift."
+  @doc "Registered names of the clerks currently on shift."
   @spec workers() :: [atom()]
   def workers do
     __MODULE__
@@ -57,13 +57,13 @@ defmodule Station.InspectionCrew do
   @spec size() :: non_neg_integer()
   def size, do: DynamicSupervisor.count_children(__MODULE__).active
 
-  @doc "Puts `count` inspectors on shift, replacing whoever is there now."
+  @doc "Puts `count` clerks on shift, replacing whoever is there now."
   @spec staff(non_neg_integer()) :: :ok
   def staff(count) do
     dismiss()
 
     for n <- 1..count//1 do
-      DynamicSupervisor.start_child(__MODULE__, {Inspector, name: worker_name(n)})
+      DynamicSupervisor.start_child(__MODULE__, {Clerk, name: worker_name(n)})
     end
 
     publish()
@@ -78,13 +78,13 @@ defmodule Station.InspectionCrew do
     publish()
   end
 
-  @doc "Hands one container to the next inspector in the rotation."
+  @doc "Hands one container to the next clerk in the rotation."
   @spec dispatch(atom(), String.t(), Station.Cargo.container()) :: :ok
-  def dispatch(inspector, ship, container) do
-    GenServer.cast(inspector, {:inspect, ship, container})
+  def dispatch(clerk, ship, container) do
+    GenServer.cast(clerk, {:inspect, ship, container})
   end
 
   defp publish, do: :persistent_term.put(@term_key, List.to_tuple(workers()))
 
-  defp worker_name(n), do: :"inspector_#{String.pad_leading(to_string(n), 2, "0")}"
+  defp worker_name(n), do: :"clerk_#{String.pad_leading(to_string(n), 2, "0")}"
 end

@@ -4,7 +4,7 @@ defmodule Station.Game do
 
   One supervisor, so the tree in Voyager separates the two things that are easy
   to confuse from across a room. Under `Station.Game` is the demo - the board,
-  the inspectors, the warehouse, the visitors' ships and the fleet. Above it, in
+  the clerks, the warehouse, the visitors' ships and the fleet. Above it, in
   the application supervisor, is the plumbing that carries the demo to a screen:
   telemetry, PubSub, the ops settings, the watchdog and the endpoint.
 

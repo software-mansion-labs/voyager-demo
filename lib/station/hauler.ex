@@ -10,6 +10,7 @@ defmodule Station.Hauler do
 
   use GenServer, restart: :temporary
 
+  alias Station.OpsPanel
   alias Station.Warehouse
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -38,9 +39,12 @@ defmodule Station.Hauler do
     {:noreply, %{state | hauled: state.hauled + length(containers)}}
   end
 
+  # Read from ops on every trip, so the panel changes the drain within one.
+  # Jittered from half to one and a half times the interval, so the fleet does
+  # not fire in lockstep and the mean is exactly the number on the panel.
   defp schedule do
-    interval = Application.fetch_env!(:station, :hauler_interval_ms)
-    Process.send_after(self(), :collect, interval + :rand.uniform(interval))
+    interval = OpsPanel.hauler_interval_ms()
+    Process.send_after(self(), :collect, div(interval, 2) + :rand.uniform(max(interval, 1)))
   end
 
   defp batch, do: Application.fetch_env!(:station, :hauler_batch)

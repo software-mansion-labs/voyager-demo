@@ -24,8 +24,8 @@ defmodule Station.TrafficControl do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  @spec set_hauler_boost(pos_integer()) :: :ok
-  def set_hauler_boost(factor), do: Station.Dispatcher.set_hauler_boost(factor)
+  @spec set_haulers(non_neg_integer()) :: :ok
+  def set_haulers(count), do: Station.Dispatcher.set_haulers(count)
 
   @spec set_freighters(non_neg_integer()) :: :ok
   def set_freighters(count), do: Station.Dispatcher.set_freighters(count)

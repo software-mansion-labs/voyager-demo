@@ -39,6 +39,15 @@ defmodule StationWeb.ConnCase do
     _ = :sys.get_state(Station.Warehouse)
     Station.Leaderboard.reset()
     Station.Metrics.reset()
+    Station.OpsPanel.set_clerks(Station.OpsPanel.default_clerks())
+    Station.OpsPanel.set_show_qr(true)
+    Station.OpsPanel.set_haulers(Application.fetch_env!(:station, :haulers))
+
+    Station.OpsPanel.set_freighter_interval(
+      Application.fetch_env!(:station, :freighter_interval_ms)
+    )
+
+    Station.OpsPanel.set_hauler_interval(Application.fetch_env!(:station, :hauler_interval_ms))
     Station.OpsPanel.set_warehouse_mode(:single_clerk)
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}

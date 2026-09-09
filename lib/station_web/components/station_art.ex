@@ -26,9 +26,9 @@ defmodule StationWeb.StationArt do
   # Sized to their labels: the pixel font on the television runs twelve pixels
   # a character, and the warehouse takes whatever is left.
   @windows %{
-    intake: {14, 17},
-    inspection: {33, 27},
-    warehouse: {62, 60},
+    intake: {14, 18},
+    inspection: {34, 27},
+    warehouse: {63, 59},
     outbound: {124, 22}
   }
   @window_top 16
@@ -117,8 +117,8 @@ defmodule StationWeb.StationArt do
            end)
          end)
          # Chevrons on the pillars between windows: the direction of cargo.
-         |> chevron(31, 29)
-         |> chevron(60, 29)
+         |> chevron(32, 29)
+         |> chevron(61, 29)
          |> chevron(122, 29)
          # Docking arms out to a ring on either side.
          |> rect(6, 28, 6, 2, :strut)

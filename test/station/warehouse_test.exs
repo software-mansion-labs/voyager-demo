@@ -46,6 +46,25 @@ defmodule Station.WarehouseTest do
     assert %{"ice" => 0, "ore" => 0} = Warehouse.shelf()
   end
 
+  test "with a crew on, the backlog is in the clerks' mailboxes and gets counted there" do
+    OpsPanel.set_warehouse_mode(:inspection_crew)
+
+    clerks =
+      Station.InspectionCrew.on_shift() |> Tuple.to_list() |> Enum.map(&Process.whereis/1)
+
+    Enum.each(clerks, &:sys.suspend/1)
+
+    deliver(nil, "ice", 6)
+    Station.Watchdog.sample()
+
+    stats = Warehouse.stats()
+    assert stats.queue == 0
+    assert stats.inspection_queue == 6
+    assert stats.backlog == 6
+
+    Enum.each(clerks, &:sys.resume/1)
+  end
+
   test "a hauler takes cargo away and the memory goes with it" do
     deliver("nostromo", "machinery", 4)
     stored_bytes = Metrics.get(:stored_bytes)
@@ -57,6 +76,8 @@ defmodule Station.WarehouseTest do
     assert length(containers) == 3
     assert Metrics.get(:stored) == 1
     assert Metrics.get(:stored_bytes) < stored_bytes
+    # The television colours the outgoing crates from this, per type.
+    assert %{"machinery" => 3} = Warehouse.collected()
   end
 
   test "the inspection crew does the checksums instead, and the count still adds up" do

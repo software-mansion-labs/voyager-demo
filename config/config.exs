@@ -12,10 +12,11 @@ import Config
 # than a code change. The leaderboard survives that restart.
 config :station,
   # --- ships -----------------------------------------------------------------
-  # The cap is for the human eye, not the runtime. Sixteen ships is two full
-  # columns on the television; the BEAM would carry sixteen thousand. Freighters
-  # count towards it like anyone else - a ship is a ship on the screen.
-  max_ships: 16,
+  # The cap is for the human eye, not the runtime. Eight ships is one legible
+  # column on a television or a laptop lid; the BEAM would carry eight
+  # thousand. Freighters count towards it like anyone else - a ship is a ship
+  # on the screen.
+  max_ships: 8,
   ship_ttl_ms: :timer.minutes(5),
   # One click removes exactly one box from the grid on the phone, so this is
   # also the size of that grid.
@@ -32,43 +33,43 @@ config :station,
   congested_queue: 100,
 
   # --- cargo -----------------------------------------------------------------
-  # `chunks` are 32 byte pieces, so they decide how fast warehouse memory grows.
-  # `inspection_rounds` decide how long a single container takes to clear.
-  # These two are knobs one and two of the four in the concept.
+  # `chunks` are 32 byte pieces, so they decide how fast warehouse memory grows -
+  # the only thing the four types differ in. `inspection_rounds` decide how long
+  # a container takes to clear, and they are the same for every type on purpose:
+  # one cost per container makes the clerk maths legible from across the aisle
+  # (N clerks clear N times as many a second, full stop).
   #
-  # The rounds below are the cost for ONE docked visitor - 40 / 400 / 400 /
-  # 800 ms per container - and the crowd divides them: with N ships docked a
-  # container costs a Nth (see Cargo.effective_rounds/1). The offered load per
-  # clerk is then the same whoever shows up, about 130% when the room really
-  # races, so congestion is reachable by two people and survivable by thirty,
-  # and the warehouse absorbs cargo fast enough that a crowd fills its memory
-  # to capacity in minutes instead of feeding an ever-deeper queue. Measured at
-  # 6060 rounds per millisecond on an M-class laptop; `mix station.calibrate`
-  # prints the real numbers on the box that will run the booth.
+  # The rounds are the cost for ONE docked visitor - about 400 ms per container
+  # - and the crowd divides them: with N ships docked a container costs a Nth
+  # (see Cargo.effective_rounds/1). One visitor racing at ramp speed saturates
+  # one clerk by about 130%; a room of them saturates it by the same margin.
+  # A round is one `:erlang.phash2/1`, roughly 3 000 to 6 000 rounds per
+  # millisecond on an M-class laptop depending on how warm it is;
+  # `mix station.calibrate` prints the real numbers on the box that runs the booth.
   cargo_types: %{
     "ice" => %{
       label: "ICE",
       chunks: 16,
-      inspection_rounds: 240_000,
+      inspection_rounds: 14_000_000,
       blurb: "Light, cheap, endless."
     },
     "ore" => %{
       label: "ORE",
       chunks: 128,
-      inspection_rounds: 2_400_000,
+      inspection_rounds: 14_000_000,
       blurb: "The balanced default."
     },
     "machinery" => %{
       label: "MACHINERY",
       chunks: 1_024,
-      inspection_rounds: 2_400_000,
+      inspection_rounds: 14_000_000,
       blurb: "Bulky. Fills the warehouse fastest."
     },
     "antimatter" => %{
       label: "ANTIMATTER",
       chunks: 16,
-      inspection_rounds: 4_800_000,
-      blurb: "Tiny, and a nightmare to inspect."
+      inspection_rounds: 14_000_000,
+      blurb: "Tiny, and just as much work as anything else."
     }
   },
 
@@ -79,18 +80,19 @@ config :station,
   # a rush hour with the crew on fills it in minutes, not an afternoon. The
   # jettison line on the wall is the payoff - it has to be reachable.
   warehouse_capacity: 1_200,
-  # Defaults to one inspector per scheduler when unset.
-  inspectors: nil,
+  # Crew size for `set_warehouse_mode(:inspection_crew)` when unset: one clerk
+  # per scheduler, capped at eight.
+  clerks: nil,
 
   # --- haulers ---------------------------------------------------------------
   # The consumers. Deliberately few and slow at x1, so a room that has filled
   # the warehouse watches its memory creep down rather than vanish - and the
   # ops boost turns the drain up while somebody is looking at the line.
-  haulers: 3,
+  haulers: 2,
   # Multipliers for `Dispatch extra haulers`. They have to be big: the point of
   # that button is that the memory trend turns around while somebody watches it,
   # and a small boost only slows the climb down.
-  hauler_boosts: [1, 4, 8],
+  hauler_boosts: [1, 2, 4],
   # Deliberately just under what the fleet delivers, so an idle station creeps
   # upward instead of sitting flat, and a boost visibly turns the line around.
   hauler_interval_ms: 1_200,
@@ -100,7 +102,7 @@ config :station,
   # Simulated visitors, for a quiet aisle. Off until ops turns them on with
   # `OpsPanel.set_traffic/1`; the named levels are what the staff types.
   freighters: 0,
-  traffic_levels: %{off: 0, quiet: 3, normal: 8, rush: 16},
+  traffic_levels: %{off: 0, quiet: 2, normal: 4, rush: 8},
   # Freighters step aside for people: with this on, every visitor who docks
   # sends one freighter home, so the screen holds a steady crowd whoever is in
   # it, and a station full of freighters still has a berth for a real visitor.
@@ -108,12 +110,12 @@ config :station,
   yield_to_visitors: true,
   # One container per tick per freighter, jittered around this. Freighters do
   # not divide the inspection cost the way visitors do, so their count is the
-  # load: at 2.5 s a container and the average cargo mix, 3 freighters offer
-  # about 40% of one clerk, 8 about 100%, 16 about 200% - quiet is a heartbeat,
+  # load: at 1.5 s a container and the average cargo mix, 2 freighters offer
+  # about 45% of one clerk, 4 about 90%, 8 about 180% - quiet is a heartbeat,
   # normal is on the line, rush congests on its own and the queue climbs a few
   # a second. `mix station.calibrate` prints the real numbers for this box;
   # lower this and every level gets heavier in proportion.
-  freighter_interval_ms: 2_500,
+  freighter_interval_ms: 1_500,
   # The pause with an empty hold before taking on a fresh one.
   freighter_resupply_ms: 4_000,
 

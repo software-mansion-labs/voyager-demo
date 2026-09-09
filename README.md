@@ -87,10 +87,14 @@ docker compose exec station bin/station remote
 | ----------------------------------------------- | ----------------------------------------------------- |
 | `OpsPanel.set_traffic(:normal)`                 | simulated visitors for a quiet aisle - see below      |
 | `OpsPanel.set_warehouse_mode(:inspection_crew)` | the bottleneck demo, and its fix                      |
-| `OpsPanel.set_hauler_boost(4)`                  | the producer/consumer demo, and its fix               |
+| `OpsPanel.set_clerks(8)`                        | how many inspect, up to 8; `1` is the single clerk (also on `/ops`) |
+| `OpsPanel.set_haulers(12)` or `set_hauler_boost(4)` | the producer/consumer demo, and its fix (also on `/ops`) |
+| `OpsPanel.set_show_qr(false)`                   | take the QR codes off the television (also on `/ops`)  |
+| `OpsPanel.set_freighter_interval(1000)`         | ms between a freighter's containers (also on `/ops`)   |
+| `OpsPanel.set_hauler_interval(600)`             | ms between a hauler's pickups (also on `/ops`)         |
 | `DockingBay.remove(:ship_amber_falcon)`         | kick one ship off the station                         |
 | `OpsPanel.restart_warehouse()`                  | shows a supervisor restart: cargo dies, ETS survives  |
-| `OpsPanel.clear_warehouse()`                    | empty the shelf and the queue (also a button on `/ops`) |
+| `OpsPanel.clear_warehouse()`                    | empty the shelf, the queue and the clerks' queues (also on `/ops`) |
 | `OpsPanel.reset_station()`                      | undock everyone, empty the shelves; the fleet stays   |
 | `OpsPanel.reset_leaderboard()`                  | start a day from zero                                 |
 
@@ -107,18 +111,18 @@ never score on the leaderboard.
 | Call                           | Freighters |
 | ------------------------------ | ---------- |
 | `OpsPanel.set_traffic(:off)`   | 0          |
-| `OpsPanel.set_traffic(:quiet)` | 3          |
-| `OpsPanel.set_traffic(:normal)`| 8          |
-| `OpsPanel.set_traffic(:rush)`  | 16         |
-| `OpsPanel.set_traffic(12)`     | any number up to 99 |
+| `OpsPanel.set_traffic(:quiet)` | 2          |
+| `OpsPanel.set_traffic(:normal)`| 4          |
+| `OpsPanel.set_traffic(:rush)`  | 8          |
+| `OpsPanel.set_traffic(6)`      | any number up to the ship cap |
 
 Freighters never take a berth from a person: the live ship cap counts visitors
 only. With **yield to visitors** on (the default), every visitor who docks sends
-one freighter home and gets it back when they leave, so `normal` means eight
+one freighter home and gets it back when they leave, so `rush` means eight
 ships on the screen whoever they are. Turn yield off to keep the freighters and
 let visitors come on top; `UNDOCK ALL FREIGHTERS NOW` on the panel is
 `set_traffic(:off)`. Unlike visitors, freighters do not divide the inspection
-cost, so the count is the load: `quiet` idles at about 30% of one clerk,
-`normal` sits near 80%, `rush` congests the warehouse without a single visitor.
+cost, so the count is the load: `quiet` idles at about 50% of one clerk,
+`normal` sits on the line, `rush` congests the warehouse without a single visitor.
 The levels, the pace and the yield default live in the tuning block of
 `config/config.exs`.

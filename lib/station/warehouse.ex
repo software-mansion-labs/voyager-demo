@@ -59,7 +59,7 @@ defmodule Station.Warehouse do
   @spec collect(pid(), pos_integer()) :: :ok
   def collect(hauler, count), do: GenServer.cast(__MODULE__, {:collect, hauler, count})
 
-  @doc "Result coming back from an inspector, in `:inspection_crew` mode."
+  @doc "Result coming back from a clerk, in `:inspection_crew` mode."
   @spec inspected(String.t(), Cargo.container()) :: :ok
   def inspected(ship, container), do: GenServer.cast(__MODULE__, {:inspected, ship, container})
 
@@ -75,9 +75,23 @@ defmodule Station.Warehouse do
   """
   @spec shelf() :: %{Cargo.type() => non_neg_integer()}
   def shelf do
+    for {type, count} <- rows(), is_binary(type), into: %{}, do: {type, count}
+  end
+
+  @doc """
+  Containers handed to haulers so far, per cargo type. Cumulative, so the
+  television colours each outgoing crate from the real difference between two
+  ticks rather than guessing from what the shelf lost.
+  """
+  @spec collected() :: %{Cargo.type() => non_neg_integer()}
+  def collected do
+    for {{:collected, type}, count} <- rows(), into: %{}, do: {type, count}
+  end
+
+  defp rows do
     case :ets.whereis(@shelf) do
-      :undefined -> %{}
-      _ref -> @shelf |> :ets.tab2list() |> Map.new()
+      :undefined -> []
+      _ref -> :ets.tab2list(@shelf)
     end
   end
 
@@ -93,6 +107,10 @@ defmodule Station.Warehouse do
     %{
       alive?: Process.whereis(__MODULE__) != nil,
       queue: Metrics.get(:queue),
+      # Containers routed to the crew and not yet checksummed. Zero with a
+      # single clerk; with a crew this is where the queue went.
+      inspection_queue: Metrics.get(:inspection_queue),
+      backlog: Metrics.get(:queue) + Metrics.get(:inspection_queue),
       memory: Metrics.get(:warehouse_memory),
       reductions: Metrics.get(:warehouse_reductions),
       stored: Metrics.get(:stored),
@@ -144,6 +162,12 @@ defmodule Station.Warehouse do
     if taken != [] do
       send(hauler, {:cargo_collected, taken})
       Metrics.add(:collected, length(taken))
+
+      taken
+      |> Enum.frequencies_by(fn {_ship, container} -> container.type end)
+      |> Enum.each(fn {type, n} ->
+        :ets.update_counter(@shelf, {:collected, type}, n, {{:collected, type}, 0})
+      end)
     end
 
     {:noreply, collect_garbage(state)}
@@ -172,8 +196,8 @@ defmodule Station.Warehouse do
   end
 
   defp route(state, ship, container, crew) do
-    inspector = elem(crew, rem(state.next, tuple_size(crew)))
-    InspectionCrew.dispatch(inspector, ship, container)
+    clerk = elem(crew, rem(state.next, tuple_size(crew)))
+    InspectionCrew.dispatch(clerk, ship, container)
     %{state | next: state.next + 1}
   end
 

@@ -58,8 +58,17 @@ defmodule Station.Cargo do
   end
 
   @doc """
-  The inspection: serialise the container, hash it, then re-hash the digest
-  `effective_rounds/1` times.
+  The inspection: serialise the container, checksum it with SHA-256, then run
+  the digest through `effective_rounds/1` rounds of verification.
+
+  The rounds are a pure BEAM hash chain (`:erlang.phash2/1`) rather than
+  repeated `:crypto.hash/2` calls, and that is load-bearing for the crew demo:
+  every `:crypto.hash/2` call goes through OpenSSL 3's provider fetch, which
+  serialises across threads, so eight clerks hashing at once ran at barely the
+  speed of one. Measured on an M-class laptop: eight parallel chains scale
+  6.8x, eight parallel `:crypto.hash/2` loops 2.5x. The work is the same kind
+  of CPU-bound nothing either way; only one of them shows up as eight busy
+  schedulers when eight clerks are on shift.
 
   The configured rounds are the cost for one lone visitor, and the crowd
   divides them: with N ships docked each container costs a Nth. That keeps two
@@ -71,12 +80,12 @@ defmodule Station.Cargo do
   the room quiets down. The per-type ratios survive the division: antimatter
   stays twenty times an ice cube whoever is in the room.
   """
-  @spec inspect_container(container()) :: binary()
+  @spec inspect_container(container()) :: non_neg_integer()
   def inspect_container(%{type: type, payload: payload}) do
     rounds = effective_rounds(type)
 
     digest = :crypto.hash(:sha256, :erlang.term_to_binary(payload))
-    Enum.reduce(1..rounds, digest, fn _, acc -> :crypto.hash(:sha256, acc) end)
+    Enum.reduce(1..rounds, :erlang.phash2(digest), fn n, acc -> :erlang.phash2({acc, n}) end)
   end
 
   @doc "What one container of this type costs right now, crowd included."

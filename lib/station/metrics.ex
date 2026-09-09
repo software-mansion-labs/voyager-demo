@@ -19,6 +19,7 @@ defmodule Station.Metrics do
     :ships_undocked,
     :throttled,
     :queue,
+    :inspection_queue,
     :warehouse_memory,
     :warehouse_reductions,
     :run_queue,
@@ -39,6 +40,7 @@ defmodule Station.Metrics do
           | :ships_undocked
           | :throttled
           | :queue
+          | :inspection_queue
           | :warehouse_memory
           | :warehouse_reductions
           | :run_queue

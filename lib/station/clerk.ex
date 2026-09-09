@@ -1,9 +1,10 @@
-defmodule Station.Inspector do
+defmodule Station.Clerk do
   @moduledoc """
-  One pair of hands in the inspection crew: checksum a container, hand it back.
+  One clerk in the inspection crew: checksum a container, hand it back.
 
   Runs at `:low` priority so a busy station never starves the LiveViews serving
-  the visitors' phones.
+  the visitors' phones. Named `clerk_01`, `clerk_02`, ... in the tree, so the
+  crew reads on the television and in Voyager as the same word.
   """
 
   use GenServer, restart: :temporary

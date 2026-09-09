@@ -20,6 +20,7 @@ defmodule Station.Freighter do
 
   alias Station.Cargo
   alias Station.FreighterLine
+  alias Station.OpsPanel
   alias Station.Warehouse
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -114,8 +115,10 @@ defmodule Station.Freighter do
     Process.send_after(self(), :tick, Application.fetch_env!(:station, :freighter_resupply_ms))
   end
 
+  # The interval is read from ops on every tick, so turning the knob on the
+  # panel changes the pace within one container.
   defp schedule(_state) do
-    interval = Application.fetch_env!(:station, :freighter_interval_ms)
+    interval = OpsPanel.freighter_interval_ms()
     Process.send_after(self(), :tick, div(interval, 2) + :rand.uniform(max(interval, 1)))
   end
 

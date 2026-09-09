@@ -6,7 +6,8 @@ defmodule StationWeb.StationOpsLive do
   dock along the left arm, containers cross the gap to the station one at a
   time, and haulers on the right pull cargo back out. The station in the middle
   is `Station.Warehouse` drawn as the pipeline it is, left to right: INTAKE,
-  where crates land and the mailbox depth is a number; INSPECTION, one lane per
+  where crates land and the number is everything not yet on the shelf - the
+  warehouse mailbox plus whatever the crew holds; INSPECTION, one lane per
   clerk, lit while it is checksumming; the HOLD, one tile per container in the
   process's state, coloured by cargo; and OUTBOUND, where the haulers collect.
 
@@ -28,6 +29,7 @@ defmodule StationWeb.StationOpsLive do
   alias Station.DockingBay
   alias Station.FreighterLine
   alias Station.InspectionCrew
+  alias Station.OpsPanel
   alias Station.Ship
   alias Station.Warehouse
 
@@ -71,6 +73,7 @@ defmodule StationWeb.StationOpsLive do
     {scene, previous} = scene(ships, stats, fleet, capacity, full?, socket.assigns.previous)
 
     socket
+    |> assign(:show_qr, OpsPanel.show_qr?())
     |> assign(:scene, scene)
     |> assign(:previous, previous)
   end
@@ -131,8 +134,11 @@ defmodule StationWeb.StationOpsLive do
       haulers: fleet.haulers,
       haulerDelta: delta(previous && previous.collected, stats.collected),
       hauled: stats.collected,
-      waiting: stats.queue,
-      congested: stats.queue >= Application.fetch_env!(:station, :congested_queue),
+      # Everything not yet on the shelf: the warehouse mailbox plus what the
+      # crew has been handed and not yet checksummed. One number, wherever the
+      # backlog happens to sit.
+      waiting: stats.backlog,
+      congested: stats.backlog >= Application.fetch_env!(:station, :congested_queue),
       memory: stats.memory,
       docked: length(ships),
       berths: DockingBay.capacity(),
@@ -143,6 +149,9 @@ defmodule StationWeb.StationOpsLive do
       # ordered by type on purpose: the truth the tiles carry is what is on the
       # shelf, and drawing a FIFO the process never publishes would be a guess.
       hold: Map.merge(Map.new(Cargo.types(), &{&1, 0}), Warehouse.shelf()),
+      # What the haulers took, per type, cumulative: the hook colours the
+      # outgoing crates from the difference since its last tick.
+      collected: Map.merge(Map.new(Cargo.types(), &{&1, 0}), Warehouse.collected()),
       capacity: capacity,
       full: full?
     }
@@ -171,7 +180,10 @@ defmodule StationWeb.StationOpsLive do
           </div>
         </header>
 
-        <div class="grid min-h-0 flex-1 grid-cols-[1fr_14rem] gap-3">
+        <div class={[
+          "grid min-h-0 flex-1 gap-3",
+          if(@show_qr, do: "grid-cols-[1fr_14rem]", else: "grid-cols-1")
+        ]}>
           <div class="flex min-h-0 flex-col gap-3">
             <%!-- The scene. Every actor inside is created by the hook from the
                   snapshot on data-scene, so LiveView leaves the children alone. --%>
@@ -271,10 +283,11 @@ defmodule StationWeb.StationOpsLive do
             </section>
           </div>
 
-          <div class="flex min-h-0 flex-col gap-3">
+          <div :if={@show_qr} id="tv-qr" class="flex min-h-0 flex-col gap-3">
             <%!-- The way in. It is on the television rather than only on the
                   desk because the queue behind the booth can read a screen from
-                  the aisle, and that is where the next ship comes from. --%>
+                  the aisle, and that is where the next ship comes from. Ops can
+                  hide the column when the booth wants the scene alone. --%>
             <section class="pixel-panel flex flex-col items-center gap-3 p-3 text-center">
               <div class="w-full bg-white p-2">
                 {raw(@dock_qr)}

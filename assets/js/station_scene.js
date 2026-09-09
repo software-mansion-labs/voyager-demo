@@ -26,10 +26,11 @@ const BERTH_SPACING = 14;
 // column and the top berth's label must not run into it.
 const BERTH_SPREAD = 68;
 
-// A column takes eight before the next one opens: two columns is the cap.
-// Past that the rows are closer together than a ship is tall, and the names
+// Eight berths to a column, and eight is the cap, so ships are one column and
+// the second only exists for a cap somebody raises. Past eight rows the names
 // start landing on each other.
 const PER_COLUMN = 8;
+const MAX_HAULERS_DRAWN = 8;
 
 const SHIP_WIDTH = 5.5;
 
@@ -41,15 +42,18 @@ const MAX_CRATES_IN_FLIGHT = 90;
 const MAX_CRATES_PER_SHIP_PER_TICK = 5;
 const FLIGHT_MS = 850;
 
-// How long a lane stays lit after a tick that saw it work, and how many lanes
-// the panel will draw before the count alone has to say the rest.
+// How long a lane stays lit after a tick that saw it work. Lanes sit in a
+// fixed grid of four by two - room for the whole crew at its cap - with square
+// cells sized to the window, so one clerk and eight clerks draw the same box.
 const LANE_BUSY_MS = 950;
-const MAX_LANES = 12;
+const LANE_COLUMNS = 4;
+const LANE_ROWS = 2;
+const LANE_GAP = 3;
 
 const CARGO_COLOR = {
   ice: "text-info",
   ore: "text-primary",
-  machinery: "text-warning",
+  machinery: "text-success",
   antimatter: "text-accent",
 };
 
@@ -79,6 +83,7 @@ export const StationScene = {
     this.tiles = new Map();
     this.holdCapacity = 0;
     this.outgoing = [];
+    this.collected = null;
     this.pickupTurn = 0;
     this.inFlight = 0;
     this.crates = new Map();
@@ -116,19 +121,31 @@ export const StationScene = {
     // read off the page rather than written down as a constant.
     this.dock = { in: this.locate(this.ports.in), out: this.locate(this.ports.out) };
 
+    this.trackCollected(state.collected);
     state.ships.forEach((ship) => this.launchCrates(ship));
     this.launchPickups(state.haulerDelta, state.haulers);
   },
 
-  // The cargo type the next outgoing crate is drawn in. The hook does not know
-  // which container a hauler took, but it knows which types just left the
-  // shelf, and the crates cycle through those - so cargo is its own colour
-  // on the way out as well as on the way in.
-  outgoingTone() {
-    if (this.outgoing.length === 0) return "text-primary";
+  // What the haulers took since the last tick, as a list of cargo types with
+  // one entry per container - the warehouse publishes the running totals per
+  // type, so this is what actually left, not a guess from what the shelf lost.
+  trackCollected(totals) {
+    const previous = this.collected;
+    this.collected = totals;
+    this.outgoing = [];
 
-    const type = this.outgoing[this.pickupTurn % this.outgoing.length];
-    return CARGO_COLOR[type] || "text-primary";
+    if (!previous) return;
+
+    Object.entries(totals).forEach(([type, total]) => {
+      const taken = Math.max(0, total - (previous[type] || 0));
+      for (let n = 0; n < Math.min(taken, 24); n++) this.outgoing.push(type);
+    });
+  },
+
+  // The cargo type the n-th outgoing crate of this tick is drawn in.
+  outgoingTone(index) {
+    if (this.outgoing.length === 0) return "text-primary";
+    return CARGO_COLOR[this.outgoing[index % this.outgoing.length]] || "text-primary";
   },
 
   // --- ships -------------------------------------------------------------
@@ -211,7 +228,7 @@ export const StationScene = {
   // --- haulers -----------------------------------------------------------
 
   syncHaulers(count) {
-    const wanted = Math.min(count, 12);
+    const wanted = Math.min(count, MAX_HAULERS_DRAWN);
 
     while (this.haulers.length > wanted) {
       const el = this.haulers.pop();
@@ -221,7 +238,7 @@ export const StationScene = {
 
     while (this.haulers.length < wanted) {
       const el = document.createElement("div");
-      el.className = "scene-actor text-success";
+      el.className = "scene-actor text-base-content";
       el.style.width = "5%";
       el.innerHTML = `<div class="scene-hover">${this.sprite("hauler")}</div>`;
       this.actors.appendChild(el);
@@ -257,10 +274,13 @@ export const StationScene = {
   launchPickups(delta, haulers) {
     if (delta <= 0 || haulers === 0) return;
 
-    const count = Math.min(Math.ceil(delta / 2), 6);
+    // One crate per pickup, roughly - a batch is two containers - spread over
+    // the second, up to a dozen; past that the OUTBOUND count carries it.
+    const count = Math.min(Math.ceil(delta / 2), 12);
+    const gap = 900 / count;
 
     for (let n = 0; n < count; n++) {
-      this.after(n * 140, () => {
+      this.after(Math.round(n * gap), () => {
         // The turn counter lives across ticks. Indexed from the loop variable,
         // every tick started back at zero - and at one crate per tick, which is
         // what the current pace mostly produces, the first hauler took every
@@ -271,7 +291,7 @@ export const StationScene = {
         this.flyCrate(
           this.dock.out,
           { x: parseFloat(target.style.left), y: parseFloat(target.style.top) },
-          this.outgoingTone(),
+          this.outgoingTone(n),
         );
       });
     }
@@ -368,10 +388,12 @@ export const StationScene = {
     this.hold.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
   },
 
-  // One lane per clerk on shift. A tick that inspected N containers lights N
-  // lanes for a moment; under load the single clerk's lane never goes dark.
+  // One lane per clerk on shift, every one of them. A tick that inspected N
+  // containers lights N lanes for a moment; under load the single clerk's lane
+  // never goes dark.
   syncLanes(count, inspected) {
-    const wanted = Math.min(count, MAX_LANES);
+    const wanted = Math.max(count, 0);
+    this.sizeLanes();
 
     while (this.laneEls.length > wanted) {
       this.laneEls.pop().remove();
@@ -396,13 +418,23 @@ export const StationScene = {
     });
   },
 
+  // Square cells, four by two, as large as the window allows in both directions.
+  sizeLanes() {
+    const box = this.lanes.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+
+    const byWidth = (box.width - LANE_GAP * (LANE_COLUMNS - 1)) / LANE_COLUMNS;
+    const byHeight = (box.height - LANE_GAP * (LANE_ROWS - 1)) / LANE_ROWS;
+    const cell = Math.max(8, Math.floor(Math.min(byWidth, byHeight)));
+
+    this.lanes.style.gridTemplateColumns = `repeat(${LANE_COLUMNS}, ${cell}px)`;
+    this.lanes.style.gridTemplateRows = `repeat(${LANE_ROWS}, ${cell}px)`;
+  },
+
   // One tile per container on the shelf, in its cargo colour. Only the
   // difference is touched: a tick adds a few tiles and takes a few away, and
   // the oldest of a type goes first, the way the warehouse's own queue works.
-  // The types that shrank this tick are what the outgoing crates are drawn in.
   syncHold(hold) {
-    this.outgoing = [];
-
     Object.entries(hold).forEach(([type, count]) => {
       let tiles = this.tiles.get(type);
 
@@ -410,8 +442,6 @@ export const StationScene = {
         tiles = [];
         this.tiles.set(type, tiles);
       }
-
-      if (tiles.length > count) this.outgoing.push(type);
 
       while (tiles.length > count) {
         tiles.shift().remove();

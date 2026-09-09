@@ -23,10 +23,24 @@ defmodule Station.OpsPanel do
 
   @type settings :: %{
           warehouse_mode: Warehouse.mode(),
-          hauler_boost: pos_integer(),
+          clerks: pos_integer(),
+          haulers: non_neg_integer(),
           freighters: non_neg_integer(),
-          yield_to_visitors: boolean()
+          yield_to_visitors: boolean(),
+          show_qr: boolean(),
+          freighter_interval_ms: pos_integer(),
+          hauler_interval_ms: pos_integer()
         }
+
+  # Pace limits, in milliseconds. The floor keeps an autoclicker's worth of
+  # robots off the warehouse; the ceiling is "as good as off".
+  @min_interval_ms 100
+  @max_interval_ms :timer.hours(1)
+
+  # Two rows of four lanes on the television; more clerks than that would be a
+  # number without a picture.
+  @max_clerks 8
+  @max_haulers 99
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -37,8 +51,38 @@ defmodule Station.OpsPanel do
   @spec warehouse_mode() :: Warehouse.mode()
   def warehouse_mode, do: settings().warehouse_mode
 
-  @spec hauler_boost() :: pos_integer()
-  def hauler_boost, do: settings().hauler_boost
+  @doc "How many haulers are on duty."
+  @spec haulers() :: non_neg_integer()
+  def haulers, do: settings().haulers
+
+  @spec max_haulers() :: pos_integer()
+  def max_haulers, do: @max_haulers
+
+  @doc "How many clerks inspect when the crew is on shift."
+  @spec clerks() :: pos_integer()
+  def clerks, do: settings().clerks
+
+  @spec max_clerks() :: pos_integer()
+  def max_clerks, do: @max_clerks
+
+  @doc "One clerk per scheduler, capped at what the television can draw."
+  @spec default_clerks() :: pos_integer()
+  def default_clerks, do: InspectionCrew.default_size() |> min(@max_clerks) |> max(2)
+
+  @doc "Whether the television shows the QR codes."
+  @spec show_qr?() :: boolean()
+  def show_qr?, do: settings().show_qr
+
+  @doc "How often each freighter sends a container, in milliseconds."
+  @spec freighter_interval_ms() :: pos_integer()
+  def freighter_interval_ms, do: settings().freighter_interval_ms
+
+  @doc "How often each hauler comes to collect, in milliseconds."
+  @spec hauler_interval_ms() :: pos_integer()
+  def hauler_interval_ms, do: settings().hauler_interval_ms
+
+  @spec interval_bounds() :: {pos_integer(), pos_integer()}
+  def interval_bounds, do: {@min_interval_ms, @max_interval_ms}
 
   @doc "How many simulated visitors are on duty."
   @spec freighters() :: non_neg_integer()
@@ -57,10 +101,52 @@ defmodule Station.OpsPanel do
     GenServer.call(__MODULE__, {:set_warehouse_mode, mode})
   end
 
-  @doc "Sends out more haulers. Multiplies the baseline, so the drop is quick."
+  @doc """
+  How many clerks inspect cargo.
+
+  One clerk is the warehouse process doing its own checksums - the bottleneck.
+  Two or more is the inspection crew, that many clerks on shift, and the
+  warehouse only routing. A crew size is remembered, so going back to one
+  clerk and then `set_warehouse_mode(:inspection_crew)` brings the same crew.
+  """
+  @spec set_clerks(pos_integer()) :: :ok
+  def set_clerks(count) when is_integer(count) and count >= 1 and count <= @max_clerks do
+    GenServer.call(__MODULE__, {:set_clerks, count})
+  end
+
+  @doc "Exactly this many haulers on duty. Zero is a warehouse nobody drains."
+  @spec set_haulers(non_neg_integer()) :: :ok
+  def set_haulers(count) when is_integer(count) and count >= 0 and count <= @max_haulers do
+    GenServer.call(__MODULE__, {:set_haulers, count})
+  end
+
+  @doc "Sends out more haulers. Multiplies the configured baseline, so the drop is quick."
   @spec set_hauler_boost(pos_integer()) :: :ok
   def set_hauler_boost(factor) when is_integer(factor) and factor >= 1 do
-    GenServer.call(__MODULE__, {:set_hauler_boost, factor})
+    set_haulers(min(Application.fetch_env!(:station, :haulers) * factor, @max_haulers))
+  end
+
+  @doc """
+  How often each freighter sends a container. The freighters' count is the
+  load and this is its other half: halve the interval and every level doubles.
+  """
+  @spec set_freighter_interval(pos_integer()) :: :ok
+  def set_freighter_interval(ms)
+      when is_integer(ms) and ms >= @min_interval_ms and ms <= @max_interval_ms do
+    GenServer.call(__MODULE__, {:set_freighter_interval, ms})
+  end
+
+  @doc "How often each hauler comes to collect. The drain, per hauler."
+  @spec set_hauler_interval(pos_integer()) :: :ok
+  def set_hauler_interval(ms)
+      when is_integer(ms) and ms >= @min_interval_ms and ms <= @max_interval_ms do
+    GenServer.call(__MODULE__, {:set_hauler_interval, ms})
+  end
+
+  @doc "Shows or hides the QR codes on the television."
+  @spec set_show_qr(boolean()) :: :ok
+  def set_show_qr(show?) when is_boolean(show?) do
+    GenServer.call(__MODULE__, {:set_show_qr, show?})
   end
 
   @doc """
@@ -101,13 +187,14 @@ defmodule Station.OpsPanel do
   def restart_warehouse, do: GenServer.call(__MODULE__, :restart_warehouse)
 
   @doc """
-  Empties the warehouse and its mailbox, now.
+  Empties the warehouse, its mailbox and every clerk's mailbox, now.
 
   A flush would queue behind the very backlog it is meant to remove, so this
   stops the process through its supervisor and starts it again - an orderly
   stop, not a crash, so it does not count towards the restart intensity the
-  way `restart_warehouse/0` does. Everything on the shelf and everything
-  waiting is gone; the leaderboard keeps every delivery.
+  way `restart_warehouse/0` does. With a crew on, the crew is replaced the
+  same way, since that is where the backlog sits. Everything on the shelf and
+  everything waiting anywhere is gone; the leaderboard keeps every delivery.
   """
   @spec clear_warehouse() :: :ok
   def clear_warehouse, do: GenServer.call(__MODULE__, :clear_warehouse)
@@ -132,10 +219,42 @@ defmodule Station.OpsPanel do
     {:reply, :ok, state}
   end
 
-  def handle_call({:set_hauler_boost, factor}, _from, state) do
-    TrafficControl.set_hauler_boost(factor)
-    update(:hauler_boost, factor)
-    Events.emit(:ops, "HAULERS DISPATCHED - x#{factor} CREW ON DUTY")
+  # One clerk is a mode, not a crew size: the remembered crew survives it, so
+  # the mode switch on its own brings the same people back.
+  def handle_call({:set_clerks, 1}, _from, state) do
+    apply_warehouse_mode(:single_clerk)
+    Events.emit(:ops, "INSPECTION -> 1 CLERK")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_clerks, count}, _from, state) do
+    update(:clerks, count)
+    apply_warehouse_mode(:inspection_crew)
+    Events.emit(:ops, "INSPECTION -> #{count} #{if count == 1, do: "CLERK", else: "CLERKS"}")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_haulers, count}, _from, state) do
+    TrafficControl.set_haulers(count)
+    update(:haulers, count)
+    Events.emit(:ops, "HAULERS -> #{count} ON DUTY")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_freighter_interval, ms}, _from, state) do
+    update(:freighter_interval_ms, ms)
+    Events.emit(:ops, "FREIGHTERS -> ONE CONTAINER EVERY #{ms} MS")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_hauler_interval, ms}, _from, state) do
+    update(:hauler_interval_ms, ms)
+    Events.emit(:ops, "HAULERS -> COLLECTING EVERY #{ms} MS")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_show_qr, show?}, _from, state) do
+    update(:show_qr, show?)
     {:reply, :ok, state}
   end
 
@@ -160,10 +279,15 @@ defmodule Station.OpsPanel do
   end
 
   def handle_call(:clear_warehouse, _from, state) do
+    # Warehouse first, so nothing new is routed; then the crew, whose
+    # mailboxes are where the backlog lives when they are on shift - a fresh
+    # shift of the same size, empty-handed; then the warehouse comes back.
     :ok = Supervisor.terminate_child(Station.Game, Warehouse)
+    if warehouse_mode() == :inspection_crew, do: InspectionCrew.staff(max(clerks(), 2))
     {:ok, _pid} = Supervisor.restart_child(Station.Game, Warehouse)
     Metrics.put(:queue, 0)
-    Events.emit(:ops, "WAREHOUSE CLEARED BY OPS", :warning)
+    Metrics.put(:inspection_queue, 0)
+    Events.emit(:ops, "WAREHOUSE AND QUEUES CLEARED BY OPS", :warning)
     {:reply, :ok, state}
   end
 
@@ -185,7 +309,7 @@ defmodule Station.OpsPanel do
   # order that never leaves it routing cargo at a crew which is not there: put
   # the crew on shift before the switch, and take it off after.
   defp apply_warehouse_mode(:inspection_crew) do
-    InspectionCrew.staff(InspectionCrew.default_size())
+    InspectionCrew.staff(max(clerks(), 2))
     update(:warehouse_mode, :inspection_crew)
   end
 
@@ -201,9 +325,13 @@ defmodule Station.OpsPanel do
   defp defaults do
     %{
       warehouse_mode: Application.fetch_env!(:station, :warehouse_mode),
-      hauler_boost: 1,
+      clerks: default_clerks(),
+      haulers: Application.fetch_env!(:station, :haulers),
       freighters: Application.fetch_env!(:station, :freighters),
-      yield_to_visitors: Application.fetch_env!(:station, :yield_to_visitors)
+      yield_to_visitors: Application.fetch_env!(:station, :yield_to_visitors),
+      show_qr: true,
+      freighter_interval_ms: Application.fetch_env!(:station, :freighter_interval_ms),
+      hauler_interval_ms: Application.fetch_env!(:station, :hauler_interval_ms)
     }
   end
 end
