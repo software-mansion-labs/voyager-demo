@@ -88,6 +88,11 @@ defmodule Station.Cargo do
 
   # Docked visitors, from the lock-free counters - this runs once per container
   # inside the very process the demo congests, so it must never send a message.
+  #
+  # Visitors only. Dividing by freighters too would hold their offered load
+  # constant however many are on duty, and the whole point of the traffic knob
+  # is that rush hour congests the warehouse and quiet does not. Their pace
+  # (`freighter_interval_ms`) is tuned so that the count is the load.
   defp crowd do
     max(Station.Metrics.get(:ships_docked) - Station.Metrics.get(:ships_undocked), 1)
   end

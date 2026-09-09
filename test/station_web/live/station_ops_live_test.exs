@@ -1,16 +1,27 @@
 defmodule StationWeb.StationOpsLiveTest do
   use StationWeb.ConnCase, async: false
 
-  alias Station.Events
-
   test "the television names every docked ship", %{conn: conn} do
-    {:ok, _} = Station.DockingBay.dock("Nostromo", "ore")
-    {:ok, _} = Station.DockingBay.dock("Rocinante", "ice")
+    {:ok, first} = Station.DockingBay.dock()
+    {:ok, second} = Station.DockingBay.dock()
 
     {:ok, _view, html} = live(conn, ~p"/tv")
 
-    assert html =~ "ship_nostromo"
-    assert html =~ "ship_rocinante"
+    assert html =~ to_string(first)
+    assert html =~ to_string(second)
+  end
+
+  test "freighters are ships on the screen and in the DOCKED count", %{conn: conn} do
+    {:ok, _} = Station.DockingBay.dock()
+    :ok = Station.OpsPanel.set_traffic(2)
+
+    {:ok, _view, html} = live(conn, ~p"/tv")
+
+    assert html =~ "freighter_01"
+    assert html =~ "3/#{Station.DockingBay.capacity()}"
+    refute html =~ "freighters"
+    assert %{"ships" => ships} = scene(html)
+    assert length(ships) == 3
   end
 
   test "the television carries the way in, as a code and as a line to type", %{conn: conn} do
@@ -26,14 +37,32 @@ defmodule StationWeb.StationOpsLiveTest do
   end
 
   describe "the scene payload" do
+    test "berths are by arrival and stay put when the counts change", %{conn: conn} do
+      {:ok, first} = Station.DockingBay.dock()
+      {:ok, second} = Station.DockingBay.dock()
+      :ok = Station.OpsPanel.set_traffic(1)
+
+      {:ok, view, html} = live(conn, ~p"/tv")
+      order = fn html -> for %{"id" => id} <- scene(html)["ships"], do: id end
+
+      assert order.(html) == [to_string(first), to_string(second), "freighter_01"]
+
+      # The second ship out-delivers the first; nobody moves.
+      :ok = Station.Ship.transfer(second)
+      :sys.get_state(Process.whereis(second))
+      send(view.pid, :refresh)
+
+      assert order.(render(view)) == [to_string(first), to_string(second), "freighter_01"]
+    end
+
     test "opens with nothing in the air, then animates only real deliveries", %{conn: conn} do
-      {:ok, name} = Station.DockingBay.dock("Nostromo", "ore")
+      {:ok, name} = Station.DockingBay.dock()
       {:ok, view, html} = live(conn, ~p"/tv")
 
       # A screen that has been up for an hour must not open with an hour's worth
       # of cargo in flight, so the first snapshot carries no deltas at all.
-      assert %{"ships" => [%{"delta" => 0, "cargo" => "ore", "id" => "ship_nostromo"}]} =
-               scene(html)
+      id = to_string(name)
+      assert %{"ships" => [%{"delta" => 0, "id" => ^id}]} = scene(html)
 
       :ok = Station.Ship.transfer(name)
       :sys.get_state(Process.whereis(name))
@@ -50,15 +79,5 @@ defmodule StationWeb.StationOpsLiveTest do
     |> String.replace("&quot;", ~s("))
     |> String.replace("&amp;", "&")
     |> Jason.decode!()
-  end
-
-  test "the log collapses a line that repeats instead of scrolling it", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/tv")
-
-    for _ <- 1..3, do: Events.emit(:test, "WAREHOUSE OVER CAPACITY", :warning)
-    # The LiveView has to process all three broadcasts before we look.
-    _ = :sys.get_state(view.pid)
-
-    assert render(view) =~ "x3"
   end
 end

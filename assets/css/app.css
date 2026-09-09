@@ -435,14 +435,6 @@ html:has(.tv) {
   filter: drop-shadow(0 0 3px color-mix(in oklch, currentColor 55%, transparent));
 }
 
-/* The queue: containers that arrived and are waiting outside the bay door.
-   This is `message_queue_len` and nothing else. */
-.scene-queued {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
 .scene-bay {
   position: absolute;
   display: grid;

@@ -1,11 +1,11 @@
 defmodule Station.TrafficControl do
   @moduledoc """
-  The outbound side of the station: the hauler crew and its dispatcher.
+  The fleet: the hauler crew, the freighter line and their dispatcher.
 
-  There is no inbound fleet. Every container that reaches the warehouse was
-  pressed onto it by a visitor, so the queue and the memory on the television
-  are the room's own doing - an empty room is a station at zero, which is
-  exactly what it claims to be.
+  Haulers take cargo off the station. Freighters put it on, standing in for
+  visitors when the aisle is empty - and there are none until ops asks, so an
+  empty room with traffic off is a station at zero, which is exactly what it
+  claims to be.
   """
 
   use Supervisor
@@ -17,6 +17,7 @@ defmodule Station.TrafficControl do
   def init(_opts) do
     children = [
       Station.HaulerLine,
+      Station.FreighterLine,
       Station.Dispatcher
     ]
 
@@ -25,4 +26,7 @@ defmodule Station.TrafficControl do
 
   @spec set_hauler_boost(pos_integer()) :: :ok
   def set_hauler_boost(factor), do: Station.Dispatcher.set_hauler_boost(factor)
+
+  @spec set_freighters(non_neg_integer()) :: :ok
+  def set_freighters(count), do: Station.Dispatcher.set_freighters(count)
 end

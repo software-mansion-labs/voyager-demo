@@ -1,6 +1,6 @@
 defmodule Station.OpsPanel do
   @moduledoc """
-  The two switches the booth staff actually touch, plus the housekeeping ones.
+  The switches the booth staff actually touch, plus the housekeeping ones.
 
   Settings live in `:persistent_term` as well as in this process, so a ship, a
   dashboard or the warehouse can read the current mode without sending anyone a
@@ -19,9 +19,13 @@ defmodule Station.OpsPanel do
 
   @term_key {__MODULE__, :settings}
 
+  @type traffic :: atom() | non_neg_integer()
+
   @type settings :: %{
           warehouse_mode: Warehouse.mode(),
-          hauler_boost: pos_integer()
+          hauler_boost: pos_integer(),
+          freighters: non_neg_integer(),
+          yield_to_visitors: boolean()
         }
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -36,6 +40,18 @@ defmodule Station.OpsPanel do
   @spec hauler_boost() :: pos_integer()
   def hauler_boost, do: settings().hauler_boost
 
+  @doc "How many simulated visitors are on duty."
+  @spec freighters() :: non_neg_integer()
+  def freighters, do: settings().freighters
+
+  @doc "Whether freighters make room for people as they dock."
+  @spec yield_to_visitors?() :: boolean()
+  def yield_to_visitors?, do: settings().yield_to_visitors
+
+  @doc "The named traffic levels from config, for whoever is typing at the shell."
+  @spec traffic_levels() :: %{atom() => non_neg_integer()}
+  def traffic_levels, do: Application.fetch_env!(:station, :traffic_levels)
+
   @spec set_warehouse_mode(Warehouse.mode()) :: :ok
   def set_warehouse_mode(mode) when mode in [:single_clerk, :inspection_crew] do
     GenServer.call(__MODULE__, {:set_warehouse_mode, mode})
@@ -47,6 +63,39 @@ defmodule Station.OpsPanel do
     GenServer.call(__MODULE__, {:set_hauler_boost, factor})
   end
 
+  @doc """
+  Simulated visitors, for a quiet aisle.
+
+  Takes a level from `:traffic_levels` (`:off`, `:quiet`, `:normal`, `:rush`)
+  or an exact number of freighters. Each freighter is one more process in the
+  tree, sending cargo at a steady tap, and unlike visitors they do not divide
+  the inspection cost - so the count is the load: quiet idles, normal sits near
+  the line, rush congests the warehouse without a single visitor.
+  """
+  @spec set_traffic(traffic()) :: :ok | {:error, :unknown_level}
+  def set_traffic(count) when is_integer(count) and count >= 0 and count <= 99 do
+    GenServer.call(__MODULE__, {:set_traffic, count})
+  end
+
+  def set_traffic(level) when is_atom(level) do
+    case Map.fetch(traffic_levels(), level) do
+      {:ok, count} -> set_traffic(count)
+      :error -> {:error, :unknown_level}
+    end
+  end
+
+  @doc """
+  Freighters yield to visitors.
+
+  On, each docked visitor sends one freighter home, so `set_traffic(8)` means
+  eight ships on the screen whoever they are. Off, the freighter count is what
+  it says and visitors come on top.
+  """
+  @spec set_yield_to_visitors(boolean()) :: :ok
+  def set_yield_to_visitors(yield?) when is_boolean(yield?) do
+    GenServer.call(__MODULE__, {:set_yield_to_visitors, yield?})
+  end
+
   @doc "Kills the warehouse. Its supervisor restarts it, ETS survives, cargo does not."
   @spec restart_warehouse() :: :ok
   def restart_warehouse, do: GenServer.call(__MODULE__, :restart_warehouse)
@@ -54,7 +103,7 @@ defmodule Station.OpsPanel do
   @spec reset_leaderboard() :: :ok
   def reset_leaderboard, do: GenServer.call(__MODULE__, :reset_leaderboard)
 
-  @doc "Back to a clean station: no ships, no cargo, counters at zero."
+  @doc "Back to a clean station: no ships, no cargo, counters at zero. The fleet stays."
   @spec reset_station() :: :ok
   def reset_station, do: GenServer.call(__MODULE__, :reset_station)
 
@@ -75,6 +124,20 @@ defmodule Station.OpsPanel do
     TrafficControl.set_hauler_boost(factor)
     update(:hauler_boost, factor)
     Events.emit(:ops, "HAULERS DISPATCHED - x#{factor} CREW ON DUTY")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_traffic, count}, _from, state) do
+    TrafficControl.set_freighters(count)
+    update(:freighters, count)
+    Events.emit(:ops, "TRAFFIC -> #{count} FREIGHTERS ON DUTY")
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_yield_to_visitors, yield?}, _from, state) do
+    update(:yield_to_visitors, yield?)
+    Station.Dispatcher.reconcile()
+    Events.emit(:ops, "FREIGHTERS #{if yield?, do: "YIELD TO", else: "STAY FOR"} VISITORS")
     {:reply, :ok, state}
   end
 
@@ -118,7 +181,9 @@ defmodule Station.OpsPanel do
   defp defaults do
     %{
       warehouse_mode: Application.fetch_env!(:station, :warehouse_mode),
-      hauler_boost: 1
+      hauler_boost: 1,
+      freighters: Application.fetch_env!(:station, :freighters),
+      yield_to_visitors: Application.fetch_env!(:station, :yield_to_visitors)
     }
   end
 end

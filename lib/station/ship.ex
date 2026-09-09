@@ -104,7 +104,10 @@ defmodule Station.Ship do
       delivered: 0,
       refills: 0,
       last_press: now_ms(),
-      docked_at: System.system_time(:second)
+      docked_at: System.system_time(:second),
+      # Order of arrival, node-wide and never equal: the television hands out
+      # berths by it, and a berth must not move when a clock does.
+      berth: :erlang.unique_integer([:monotonic, :positive])
     }
 
     Metrics.add(:ships_docked, 1)
@@ -213,7 +216,8 @@ defmodule Station.Ship do
       delivered: state.delivered,
       refills: state.refills,
       pid: inspect(self()),
-      docked_at: state.docked_at
+      docked_at: state.docked_at,
+      berth: state.berth
     }
 
     :ets.insert(DockingBay.status_table(), {state.name, snapshot})

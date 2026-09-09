@@ -25,7 +25,7 @@ defmodule StationWeb.CockpitLive do
     case DockController.current_ship(session) do
       nil ->
         socket
-        |> put_flash(:info, "Your ship has left the station. Register again to dock.")
+        |> put_flash(:info, "Your ship has left the station. Docking a fresh one.")
         |> redirect(to: ~p"/")
         |> ok()
 
@@ -67,7 +67,7 @@ defmodule StationWeb.CockpitLive do
 
           {:error, :gone} ->
             socket
-            |> put_flash(:info, "Your ship has left the station. Register again to dock.")
+            |> put_flash(:info, "Your ship has left the station. Docking a fresh one.")
             |> redirect(to: ~p"/")
             |> noreply()
         end
@@ -96,7 +96,7 @@ defmodule StationWeb.CockpitLive do
     case Ship.status(ship) do
       {:error, :gone} ->
         socket
-        |> put_flash(:info, "Your ship has left the station. Register again to dock.")
+        |> put_flash(:info, "Your ship has left the station. Docking a fresh one.")
         |> redirect(to: ~p"/")
 
       status ->

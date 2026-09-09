@@ -6,7 +6,7 @@ defmodule Station.ShipTest do
   alias Station.Ship
 
   setup do
-    {:ok, name} = DockingBay.dock("Nostromo", "ice")
+    {:ok, name} = DockingBay.dock()
     %{ship: name}
   end
 
@@ -54,8 +54,12 @@ defmodule Station.ShipTest do
   end
 
   test "status is what the phone shows on its badge, and costs no message", %{ship: ship} do
-    assert %{name: ^ship, slug: "nostromo", cargo_type: "ice", pid: "#PID" <> _, queue: 0} =
+    slug = Station.ShipNames.to_slug(ship)
+
+    assert %{name: ^ship, slug: ^slug, cargo_type: cargo, pid: "#PID" <> _, queue: 0} =
              Ship.status(ship)
+
+    assert cargo in Station.Cargo.types()
   end
 
   # Idle means "nobody is pressing", not "nobody is connected". The cockpit polls

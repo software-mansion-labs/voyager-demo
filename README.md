@@ -1,7 +1,8 @@
 # Voyager Station
 
 A booth demo for ElixirConf. The BEAM node _is_ a space station: visitors scan a
-QR code, register a ship, and their ship joins this application's supervision
+QR code and a ship is docked for them on the spot - name and cargo picked by the
+station, nothing to type - and that ship joins this application's supervision
 tree as a named process. [Voyager](https://github.com/software-mansion/voyager),
 attached to the node from a laptop next to the television, shows it as facts
 about a live node. The concept and the reasoning are in
@@ -11,7 +12,8 @@ about a live node. The concept and the reasoning are in
 | --------------- | ---------------- |
 | Television      | `/tv`            |
 | Leaderboard     | `/leaderboard`   |
-| Visitor's phone | `/` then `/ship` |
+| Visitor's phone | `/` docks and lands on `/ship` |
+| Traffic panel (staff) | `/ops`, password |
 
 ## Deploying to a server
 
@@ -30,6 +32,7 @@ Fill in `.env`:
 | `PHX_HOST`        | the domain the phones will reach; it goes into the QR code as well |
 | `SECRET_KEY_BASE` | `openssl rand -base64 48`                                          |
 | `STATION_COOKIE`  | any private string; Voyager needs it to attach                     |
+| `STATION_OPS_PASSWORD` | guards the traffic panel at `/ops`; username is `ops`         |
 | `EPMD_PORT`       | leave `4369` unless the host runs its own Erlang                   |
 
 Then:
@@ -71,18 +74,50 @@ on the server and tunnel that port instead.
 
 ## The staff's switches
 
-There is no ops page. The switches live in `Station.OpsPanel` and are flipped
+One switch has a page: simulated traffic, at `/ops` behind `STATION_OPS_PASSWORD`
+(username `ops`), because it is the one that gets turned every time the aisle
+fills or empties. Everything else lives in `Station.OpsPanel` and is flipped
 from a shell on the node:
 
 ```bash
 docker compose exec station bin/station remote
 ```
 
-| Call                                            | What it is for                                       |
-| ----------------------------------------------- | ---------------------------------------------------- |
-| `OpsPanel.set_warehouse_mode(:inspection_crew)` | the bottleneck demo, and its fix                     |
-| `OpsPanel.set_hauler_boost(4)`                  | the producer/consumer demo, and its fix              |
-| `DockingBay.remove(:ship_name)`                 | a name that got past the filter                      |
-| `OpsPanel.restart_warehouse()`                  | shows a supervisor restart: cargo dies, ETS survives |
-| `OpsPanel.reset_station()`                      | undock everyone, empty the shelves                   |
-| `OpsPanel.reset_leaderboard()`                  | start a day from zero                                |
+| Call                                            | What it is for                                        |
+| ----------------------------------------------- | ----------------------------------------------------- |
+| `OpsPanel.set_traffic(:normal)`                 | simulated visitors for a quiet aisle - see below      |
+| `OpsPanel.set_warehouse_mode(:inspection_crew)` | the bottleneck demo, and its fix                      |
+| `OpsPanel.set_hauler_boost(4)`                  | the producer/consumer demo, and its fix               |
+| `DockingBay.remove(:ship_amber_falcon)`         | kick one ship off the station                         |
+| `OpsPanel.restart_warehouse()`                  | shows a supervisor restart: cargo dies, ETS survives  |
+| `OpsPanel.reset_station()`                      | undock everyone, empty the shelves; the fleet stays   |
+| `OpsPanel.reset_leaderboard()`                  | start a day from zero                                 |
+
+### Simulated visitors
+
+Traffic is off by default: an empty aisle is a station at zero. When nobody is
+scanning, `/ops` (or `OpsPanel.set_traffic/1`) puts freighters on duty - robot ships that
+dock, send cargo to the warehouse at a steady tap and take on a fresh load when
+they run dry, exactly like a visitor with a timer for a thumb. They show up in
+the supervision tree as `freighter_01`, `freighter_02`, ... under
+`Station.FreighterLine`, fly on the television next to the real ships, and
+never score on the leaderboard.
+
+| Call                           | Freighters |
+| ------------------------------ | ---------- |
+| `OpsPanel.set_traffic(:off)`   | 0          |
+| `OpsPanel.set_traffic(:quiet)` | 3          |
+| `OpsPanel.set_traffic(:normal)`| 8          |
+| `OpsPanel.set_traffic(:rush)`  | 16         |
+| `OpsPanel.set_traffic(12)`     | any number up to 99 |
+
+Freighters never take a berth from a person: the live ship cap counts visitors
+only. With **yield to visitors** on (the default), every visitor who docks sends
+one freighter home and gets it back when they leave, so `normal` means eight
+ships on the screen whoever they are. Turn yield off to keep the freighters and
+let visitors come on top; `UNDOCK ALL FREIGHTERS NOW` on the panel is
+`set_traffic(:off)`. Unlike visitors, freighters do not divide the inspection
+cost, so the count is the load: `quiet` idles at about 30% of one clerk,
+`normal` sits near 80%, `rush` congests the warehouse without a single visitor.
+The levels, the pace and the yield default live in the tuning block of
+`config/config.exs`.

@@ -30,8 +30,13 @@ defmodule StationWeb.ConnCase do
   end
 
   setup _tags do
+    Station.OpsPanel.set_traffic(0)
+    Station.OpsPanel.set_yield_to_visitors(false)
     Station.DockingBay.clear()
+    # Flush is a cast; wait for it, or a container still in the mailbox lands
+    # on the freshly zeroed counters of the next test.
     Station.Warehouse.flush()
+    _ = :sys.get_state(Station.Warehouse)
     Station.Leaderboard.reset()
     Station.Metrics.reset()
     Station.OpsPanel.set_warehouse_mode(:single_clerk)
@@ -39,9 +44,9 @@ defmodule StationWeb.ConnCase do
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 
-  @doc "A connection carrying a docked ship, the way a registered visitor has one."
-  def with_ship(conn, name \\ "Nostromo", cargo \\ "ice") do
-    {:ok, registered} = Station.DockingBay.dock(name, cargo)
+  @doc "A connection carrying a docked ship, the way a visitor who scanned the code has one."
+  def with_ship(conn) do
+    {:ok, registered} = Station.DockingBay.dock()
 
     conn = Plug.Test.init_test_session(conn, ship: Station.ShipNames.to_slug(registered))
     {conn, registered}

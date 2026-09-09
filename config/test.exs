@@ -35,6 +35,9 @@ config :station,
   # The ramp is instant in tests - the suite asserts on flow, not on pacing.
   ship_load_ms: 0,
   ship_queue_cap: 5,
+  # Freighters never tick on their own in tests - the suite sends :tick by hand.
+  freighter_interval_ms: :timer.hours(1),
+  freighter_resupply_ms: :timer.hours(1),
   congested_queue: 250,
   cargo_types: %{
     "ice" => %{label: "ICE", chunks: 1, inspection_rounds: 10, blurb: "Light, cheap, endless."},
@@ -52,4 +55,5 @@ config :station,
       blurb: "Tiny, and a nightmare to inspect."
     }
   },
-  leaderboard_path: "priv/leaderboard_test.ets"
+  leaderboard_path: "priv/leaderboard_test.ets",
+  ops_password: "ops"

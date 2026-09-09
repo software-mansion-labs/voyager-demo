@@ -2,9 +2,9 @@
 //
 // The server sends one JSON snapshot per second: who is docked, how much each
 // of them shipped in the last second, how many haulers are on duty and how much
-// they took away, how deep the warehouse queue is and how full it is. This hook
-// turns that into ships flying in, containers crossing the gap one at a time,
-// and haulers pulling them out the other side.
+// they took away, and how full the warehouse is. This hook turns that into
+// ships flying in, containers crossing the gap one at a time, haulers pulling
+// them out the other side, and a bay window filling up in the middle.
 //
 // Two rules keep it honest and cheap:
 //
@@ -16,31 +16,27 @@
 const LEFT_PORT = { x: 28, y: 50 };
 const RIGHT_PORT = { x: 72, y: 50 };
 
-// Inner column first: the scene is a ranking, so the ship that has moved the
-// most cargo docks nearest the station and the rest queue up behind it.
-const SHIP_COLUMNS = [23, 14, 5];
+// Inner column first: berths fill in order of arrival, visitors before
+// freighters, so the people are nearest the station and a ship keeps its
+// place for as long as it is docked. The inner column stops well short of the
+// station's hull, so the containers have a stretch of open space to cross.
+const SHIP_COLUMNS = [17, 7];
 const HAULER_COLUMNS = [88, 78];
 const BERTH_SPACING = 14;
 const BERTH_SPREAD = 76;
 
-// A column takes ten before the next one opens. Past that the rows are closer
-// together than a ship is tall, and the names start landing on each other.
-const PER_COLUMN = 10;
+// A column takes eight before the next one opens: two columns is the cap.
+// Past that the rows are closer together than a ship is tall, and the names
+// start landing on each other.
+const PER_COLUMN = 8;
 
-// A ship is drawn smaller and dimmer the further down the board it is, down to
-// a floor: rank twenty is still a legible ship, just plainly not the one to
-// look at.
 const SHIP_WIDTH = 5.5;
-const SHIP_WIDTH_FLOOR = 3.4;
-const SHIP_FADE_FLOOR = 0.45;
-const RANKS_TO_FLOOR = 12;
 
 // Roughly what a name costs under a ship: font, padding and the gap above it.
 const LABEL_HEIGHT = 15;
 
 const MAX_CRATES_IN_FLIGHT = 90;
 const MAX_CRATES_PER_SHIP_PER_TICK = 5;
-const MAX_QUEUE_CRATES = 16;
 const FLIGHT_MS = 850;
 
 const CARGO_COLOR = {
@@ -54,7 +50,6 @@ export const StationScene = {
   mounted() {
     this.actors = this.el.querySelector("[data-scene-actors]");
     this.bay = this.el.querySelector("[data-scene-bay]");
-    this.queueLane = this.el.querySelector("[data-scene-queue]");
     this.ports = {
       in: this.el.querySelector('[data-scene-port="in"]'),
       out: this.el.querySelector('[data-scene-port="out"]'),
@@ -94,8 +89,7 @@ export const StationScene = {
     this.sweepCrates();
     this.syncShips(state.ships);
     this.syncHaulers(state.haulers);
-    this.paintBay(state.stored, state.congested);
-    this.paintQueue(state.queueCrates, state.congested);
+    this.paintBay(state.stored, state.full);
 
     state.ships.forEach((ship) => this.launchCrates(ship));
     this.launchPickups(state.haulerDelta, state.haulers);
@@ -122,7 +116,7 @@ export const StationScene = {
         known.el.dataset.lane = berth.lane;
       }
 
-      this.rank(known.el, index, berth.spacing);
+      this.size(known.el, berth.spacing);
       known.cargo = ship.cargo;
     });
 
@@ -161,19 +155,10 @@ export const StationScene = {
     return el;
   },
 
-  // Where a ship sits on the board, drawn rather than written down: the leader
-  // is full size at full brightness, and each rank behind it loses a little of
-  // both until the floor.
-  rank(el, index, spacing) {
-    const fade = Math.min(index, RANKS_TO_FLOOR) / RANKS_TO_FLOOR;
-    const hull = el.querySelector("svg");
-
-    el.style.width = `${Math.min(SHIP_WIDTH - (SHIP_WIDTH - SHIP_WIDTH_FLOOR) * fade, this.fits(spacing))}%`;
-
-    // The hull dims with rank, the name never does. A visitor is here to find
-    // their own ship, and the twenty ninth ship on the board is the one whose
-    // owner is squinting hardest.
-    if (hull) hull.style.opacity = `${1 - (1 - SHIP_FADE_FLOOR) * fade}`;
+  // Every ship is drawn the same, at full size - unless the column is so full
+  // that a full-size hull would paint over the name of the ship above it.
+  size(el, spacing) {
+    el.style.width = `${Math.min(SHIP_WIDTH, this.fits(spacing))}%`;
   },
 
   // A sprite is square, so a berth row thirty pixels below the last one cannot
@@ -320,7 +305,7 @@ export const StationScene = {
     });
   },
 
-  // --- the bay and the queue ---------------------------------------------
+  // --- the bay -------------------------------------------------------------
 
   buildBay() {
     this.bayCells = [];
@@ -333,11 +318,15 @@ export const StationScene = {
   },
 
   // What the warehouse is holding, drawn inside the station's own bay window.
-  paintBay(ratio, congested) {
-    const filled = Math.round(Math.min(Math.max(ratio, 0), 1) * this.bayCells.length);
+  // The first container lights the first cell - rounding to nearest left the
+  // window dark for the first sixty deliveries, which read as cargo vanishing.
+  // Red means full: the oldest cargo is going over the side.
+  paintBay(ratio, full) {
+    const clamped = Math.min(Math.max(ratio, 0), 1);
+    const filled = clamped > 0 ? Math.max(1, Math.ceil(clamped * this.bayCells.length)) : 0;
 
-    this.bay.classList.toggle("text-error", congested);
-    this.bay.classList.toggle("text-primary", !congested);
+    this.bay.classList.toggle("text-error", full);
+    this.bay.classList.toggle("text-primary", !full);
 
     // Filled from the bottom up, the way a warehouse actually fills.
     const floor = this.bayCells.length - filled;
@@ -345,27 +334,6 @@ export const StationScene = {
     this.bayCells.forEach((cell, index) => {
       cell.style.opacity = index >= floor ? "1" : "0.08";
     });
-  },
-
-  // Containers that arrived and are waiting outside the door. This is
-  // message_queue_len and nothing else: one crate per waiting message until the
-  // pile runs out of room, and then the WH QUEUE readout carries the number.
-  paintQueue(crates, congested) {
-    const wanted = Math.min(crates, MAX_QUEUE_CRATES);
-
-    while (this.queueLane.children.length > wanted) {
-      this.queueLane.lastElementChild.remove();
-    }
-
-    while (this.queueLane.children.length < wanted) {
-      const el = document.createElement("div");
-      el.style.width = "4%";
-      el.innerHTML = this.sprite("container");
-      this.queueLane.appendChild(el);
-    }
-
-    this.queueLane.classList.toggle("text-error", congested);
-    this.queueLane.classList.toggle("text-warning", !congested);
   },
 
   // --- helpers -----------------------------------------------------------

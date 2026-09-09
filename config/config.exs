@@ -12,12 +12,10 @@ import Config
 # than a code change. The leaderboard survives that restart.
 config :station,
   # --- ships -----------------------------------------------------------------
-  # The cap is for the human eye, not the runtime. Twenty five nodes is already
-  # a dense tree on a television; the BEAM would carry twenty five thousand.
-  max_ships: 25,
-  # Ship names really do become atoms. Past this budget new visitors get a name
-  # from a fixed pool instead of one derived from what they typed.
-  max_ship_atoms: 2_000,
+  # The cap is for the human eye, not the runtime. Sixteen ships is two full
+  # columns on the television; the BEAM would carry sixteen thousand. Freighters
+  # count towards it like anyone else - a ship is a ship on the screen.
+  max_ships: 16,
   ship_ttl_ms: :timer.minutes(5),
   # One click removes exactly one box from the grid on the phone, so this is
   # also the size of that grid.
@@ -76,7 +74,11 @@ config :station,
 
   # --- warehouse -------------------------------------------------------------
   warehouse_mode: :single_clerk,
-  warehouse_capacity: 12_000,
+  # Containers held before the oldest go over the side. Sized so the bay window
+  # on the television (96 cells) lights a cell every dozen containers or so and
+  # a rush hour with the crew on fills it in minutes, not an afternoon. The
+  # jettison line on the wall is the payoff - it has to be reachable.
+  warehouse_capacity: 1_200,
   # Defaults to one inspector per scheduler when unset.
   inspectors: nil,
 
@@ -93,6 +95,27 @@ config :station,
   # upward instead of sitting flat, and a boost visibly turns the line around.
   hauler_interval_ms: 1_200,
   hauler_batch: 2,
+
+  # --- freighters ------------------------------------------------------------
+  # Simulated visitors, for a quiet aisle. Off until ops turns them on with
+  # `OpsPanel.set_traffic/1`; the named levels are what the staff types.
+  freighters: 0,
+  traffic_levels: %{off: 0, quiet: 3, normal: 8, rush: 16},
+  # Freighters step aside for people: with this on, every visitor who docks
+  # sends one freighter home, so the screen holds a steady crowd whoever is in
+  # it, and a station full of freighters still has a berth for a real visitor.
+  # Off, freighters hold their berths and a full station is full.
+  yield_to_visitors: true,
+  # One container per tick per freighter, jittered around this. Freighters do
+  # not divide the inspection cost the way visitors do, so their count is the
+  # load: at 2.5 s a container and the average cargo mix, 3 freighters offer
+  # about 40% of one clerk, 8 about 100%, 16 about 200% - quiet is a heartbeat,
+  # normal is on the line, rush congests on its own and the queue climbs a few
+  # a second. `mix station.calibrate` prints the real numbers for this box;
+  # lower this and every level gets heavier in proportion.
+  freighter_interval_ms: 2_500,
+  # The pause with an empty hold before taking on a fresh one.
+  freighter_resupply_ms: 4_000,
 
   # --- safety ----------------------------------------------------------------
   watchdog: [max_queue: 5_000, max_run_queue: 200],

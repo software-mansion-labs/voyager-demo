@@ -1,0 +1,65 @@
+<Sprites.defs />
+<Layouts.flash_group flash={@flash} />
+
+<div class="mx-auto flex min-h-screen w-full max-w-xl select-none flex-col gap-6 px-4 py-8">
+  <header class="flex items-center gap-4">
+    <Sprites.voyager_logo class="h-8" />
+    <h1 class="font-pixel text-lg text-primary">STATION</h1>
+  </header>
+
+  <section class="pixel-panel flex flex-col gap-4 p-4">
+    <p class="font-pixel text-[10px] text-base-content/50">
+      {if @ship, do: "UNDOCKED", else: "NO SHIP DOCKED"}
+    </p>
+
+    <div :if={@ship} class="flex items-center gap-3">
+      <Sprites.ship class={[
+        "size-10 shrink-0",
+        Sprites.cargo_color((@row && @row.cargo) || "ore")
+      ]} />
+      <div class="min-w-0">
+        <p class="truncate font-pixel text-xs text-secondary">{@ship}</p>
+        <p class="font-mono text-[11px] text-base-content/45">
+          has left the supervision tree
+        </p>
+      </div>
+    </div>
+
+    <dl :if={@row} class="grid grid-cols-2 gap-2 font-mono text-sm">
+      <dt class="text-base-content/45">delivered</dt>
+      <dd class="text-right text-success">{format_count(@row.containers)} containers</dd>
+      <dt class="text-base-content/45">rank</dt>
+      <dd class="text-right text-primary">{if @rank, do: "##{@rank}", else: "-"}</dd>
+    </dl>
+
+    <p class="font-mono text-[11px] leading-relaxed text-base-content/45">
+      The process is gone and its cargo with it. Your row on the leaderboard is in
+      an ETS table, and that one stays.
+    </p>
+  </section>
+
+  <.link
+    href={~p"/"}
+    id="dock-again"
+    class="pixel-button flex w-full items-center justify-center bg-primary py-5 font-pixel text-sm text-primary-content"
+  >
+    DOCK A NEW SHIP
+  </.link>
+
+  <a
+    href="https://voyager.swmansion.com"
+    target="_blank"
+    rel="noopener"
+    class="voyager-button flex items-center justify-between gap-4 px-4 py-3"
+  >
+    <Sprites.voyager_logo class="h-7" />
+    <span class="text-base">What is Voyager?</span>
+  </a>
+
+  <footer class="mt-auto flex flex-col gap-2 pt-4 font-mono text-[11px] text-base-content/45">
+    <div class="flex items-center justify-between gap-4">
+      <.link navigate={~p"/leaderboard"} class="underline hover:text-primary">Leaderboard</.link>
+      <.link navigate={~p"/tv"} class="underline hover:text-primary">Station Ops screen</.link>
+    </div>
+  </footer>
+</div>

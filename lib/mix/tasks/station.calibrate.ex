@@ -26,6 +26,9 @@ defmodule Mix.Tasks.Station.Calibrate do
   def run(_args) do
     Mix.Task.run("app.config")
     Application.ensure_all_started(:crypto)
+    # The cost is divided by the crowd, which lives in counters the application
+    # would normally create. Nobody is docked here, so the divisor is one.
+    Station.Metrics.setup()
 
     IO.puts("\n  inspection cost per container\n")
     IO.puts("  cargo         size        cost      warehouse ceiling")
@@ -59,6 +62,31 @@ defmodule Mix.Tasks.Station.Calibrate do
       Above 100% the warehouse queue climbs and the ops switch matters. Well
       below it, raise :inspection_rounds in config/config.exs. These are the
       one-visitor costs: with N ships docked each container costs a Nth.
+    """)
+
+    # Freighters do not divide the cost, so their load adds up: one every
+    # interval, at the average cost of a random cargo mix.
+    interval = Application.fetch_env!(:station, :freighter_interval_ms)
+    mean_ms = costs |> Enum.map(&elem(&1, 1)) |> Enum.sum() |> Kernel./(length(costs))
+
+    IO.puts(
+      "  simulated traffic, per clerk, with nobody docked (freighter_interval_ms: #{interval})\n"
+    )
+
+    Application.fetch_env!(:station, :traffic_levels)
+    |> Enum.sort_by(&elem(&1, 1))
+    |> Enum.each(fn {level, count} ->
+      load = count * (1000 / interval) * mean_ms / 1000 * 100
+
+      IO.puts(
+        "  #{pad(level, 12)}  #{pad(count, 3)} freighters  #{Float.round(load, 1)}% of one warehouse"
+      )
+    end)
+
+    IO.puts("""
+
+      Rush should sit above 100% so the queue climbs on its own; lower
+      :freighter_interval_ms until it does, and every level scales with it.
     """)
   end
 

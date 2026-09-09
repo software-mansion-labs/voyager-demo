@@ -8,9 +8,12 @@ defmodule StationWeb.StationOpsLive do
   the right pull cargo back out.
 
   None of it is decoration. Every crate in flight is a delivery that actually
-  happened in the last second, the pile outside the bay door is
-  `message_queue_len`, and the bay window is process state. The visitor watches
-  it here and then confirms every bit of it in Voyager, two feet to the left.
+  happened in the last second, and the bay window is process state - it lights
+  up from the very first container and goes red when the warehouse is full and
+  jettisoning. The queue is a number in the readout underneath, nothing more:
+  a pile of crates for `message_queue_len` was one picture too many. The
+  visitor watches it here and then confirms every bit of it in Voyager, two
+  feet to the left.
 
   The one honest compromise is the cap: at a busy moment the station moves a few
   hundred containers a second and no television can draw that, so past the cap
@@ -21,12 +24,12 @@ defmodule StationWeb.StationOpsLive do
 
   alias Station.Dispatcher
   alias Station.DockingBay
+  alias Station.FreighterLine
   alias Station.Ship
   alias Station.Warehouse
 
   @refresh 1_000
   @voyager_url "https://voyager.swmansion.com"
-  @queue_crates 16
 
   @impl true
   def mount(_params, _session, socket) do
@@ -53,17 +56,21 @@ defmodule StationWeb.StationOpsLive do
   defp refresh(socket) do
     stats = Warehouse.stats()
     fleet = Dispatcher.fleet()
-    ships = ships()
+    # Freighters dock on the same arm as visitors, ship the same way and count
+    # the same: the television draws a station, and a ship is a ship on it.
+    ships = ships() ++ FreighterLine.statuses()
     capacity = Application.fetch_env!(:station, :warehouse_capacity)
-    congested? = stats.queue >= @queue_crates
+    congested? = stats.queue >= Application.fetch_env!(:station, :congested_queue)
+    full? = stats.stored >= capacity
 
-    {scene, previous} = scene(ships, stats, fleet, capacity, congested?, socket.assigns.previous)
+    {scene, previous} = scene(ships, stats, fleet, capacity, full?, socket.assigns.previous)
 
     socket
     |> assign(:stats, stats)
     |> assign(:fleet, fleet)
     |> assign(:ships, ships)
     |> assign(:congested?, congested?)
+    |> assign(:full?, full?)
     |> assign(:capacity, DockingBay.capacity())
     |> assign(:warehouse_capacity, capacity)
     |> assign(:scene, scene)
@@ -98,13 +105,15 @@ defmodule StationWeb.StationOpsLive do
   # One snapshot per second, and the deltas the scene animates from. On the
   # first tick every delta is zero, so a screen that has been up for an hour
   # does not open with an hour's worth of cargo in the air.
-  defp scene(ships, stats, fleet, capacity, congested?, previous) do
+  defp scene(ships, stats, fleet, capacity, full?, previous) do
     delivered = Map.new(ships, &{&1.name, &1.delivered})
 
-    # Sorted by the board, because the scene draws the ranking: whoever has
-    # moved the most cargo takes the berth nearest the station.
+    # Berths are handed out in order of arrival and kept: a ship that moves is
+    # a ship somebody loses track of, and the whole point of the screen is to
+    # find your own. People take the column nearest the station, freighters
+    # queue up behind them.
     scene_ships =
-      for ship <- Enum.sort_by(ships, & &1.delivered, :desc) do
+      for ship <- Enum.sort_by(ships, &{Map.get(&1, :freighter?, false), &1.berth}) do
         %{
           id: to_string(ship.name),
           label: to_string(ship.name),
@@ -117,9 +126,8 @@ defmodule StationWeb.StationOpsLive do
       ships: scene_ships,
       haulers: fleet.haulers,
       haulerDelta: delta(previous && previous.collected, stats.collected),
-      queueCrates: min(stats.queue, @queue_crates),
       stored: safe_ratio(stats.stored, capacity),
-      congested: congested?
+      full: full?
     }
 
     previous = %{delivered: delivered, collected: stats.collected}
@@ -181,17 +189,6 @@ defmodule StationWeb.StationOpsLive do
                 </div>
               </div>
 
-              <%!-- The pile outside the bay door: message_queue_len, drawn as
-                    the queue it is. The crates belong to the hook - everything
-                    in here is behind phx-update="ignore", so anything the
-                    server rendered would freeze at mount. The number lives in
-                    the WAREHOUSE QUEUE readout underneath. --%>
-              <div
-                data-scene-queue
-                class="absolute bottom-4 left-1/2 flex min-h-[1.75rem] w-1/2 -translate-x-1/2 flex-wrap items-end justify-center gap-[3px] text-warning"
-              >
-              </div>
-
               <div data-scene-actors class="absolute inset-0"></div>
             </section>
 
@@ -210,7 +207,7 @@ defmodule StationWeb.StationOpsLive do
                 label="WAREHOUSE STATE"
                 value={format_count(@stats.stored)}
                 hint={"of #{format_count(@warehouse_capacity)}"}
-                tone="text-primary"
+                tone={if(@full?, do: "text-error", else: "text-primary")}
               />
               <.readout
                 label="WAREHOUSE MEMORY"

@@ -31,7 +31,9 @@ defmodule Station.LeaderboardTest do
   defp wait_for_restart(attempts \\ 100) do
     case Process.whereis(Leaderboard) do
       nil when attempts > 0 -> Process.sleep(10) && wait_for_restart(attempts - 1)
-      pid when is_pid(pid) -> :ok
+      # Registered is not initialised: the name is taken before init/1 has
+      # read the table back, so wait for the first message to be answered.
+      pid when is_pid(pid) -> :sys.get_state(pid) && :ok
     end
   end
 end

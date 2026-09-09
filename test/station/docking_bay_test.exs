@@ -3,37 +3,56 @@ defmodule Station.DockingBayTest do
 
   alias Station.DockingBay
   alias Station.Ship
+  alias Station.ShipNames
 
-  test "docking registers the ship under the name the visitor will hunt for" do
-    assert {:ok, :ship_nostromo} = DockingBay.dock("Nostromo", "ice")
-    assert is_pid(Process.whereis(:ship_nostromo))
-    assert :ship_nostromo in DockingBay.list()
+  test "docking needs nothing from the visitor and registers a named process" do
+    assert {:ok, name} = DockingBay.dock()
+
+    assert is_pid(Process.whereis(name))
+    assert name in DockingBay.list()
+    assert ShipNames.to_slug(name) in ShipNames.pool()
+    assert %{cargo_type: cargo} = Ship.status(name)
+    assert cargo in Station.Cargo.types()
   end
 
-  test "the same name cannot dock twice" do
-    {:ok, _} = DockingBay.dock("Nostromo", "ice")
-    assert {:error, :name_taken} = DockingBay.dock("nostromo", "ore")
-  end
+  test "two ships never share a name" do
+    {:ok, first} = DockingBay.dock()
+    {:ok, second} = DockingBay.dock()
 
-  test "rejects a bad name or a cargo that does not exist" do
-    assert {:error, :blocked} = DockingBay.dock("kurwa", "ore")
-    assert {:error, :too_short} = DockingBay.dock("x", "ore")
-    assert {:error, :invalid} = DockingBay.dock("Nostromo", "plutonium")
+    assert first != second
   end
 
   test "the cap is enforced, and it is a cap on the eye not the runtime" do
     capacity = DockingBay.capacity()
 
-    for n <- 1..capacity do
-      assert {:ok, _} = DockingBay.dock("ship number #{n}", "ice")
-    end
+    for _ <- 1..capacity, do: assert({:ok, _} = DockingBay.dock())
 
     assert DockingBay.full?()
-    assert {:error, :at_capacity} = DockingBay.dock("one too many", "ice")
+    assert {:error, :at_capacity} = DockingBay.dock()
+  end
+
+  test "freighters take berths like anyone else, and yield them to a person" do
+    capacity = DockingBay.capacity()
+    :ok = Station.OpsPanel.set_traffic(capacity)
+    assert DockingBay.full?()
+
+    # Yield off: a full station is full.
+    assert {:error, :at_capacity} = DockingBay.dock()
+
+    # Yield on: one freighter goes home this instant and the visitor docks.
+    :ok = Station.OpsPanel.set_yield_to_visitors(true)
+    assert {:ok, name} = DockingBay.dock()
+    assert is_pid(Process.whereis(name))
+    assert Station.FreighterLine.count() == capacity - 1
+    assert DockingBay.occupied() == capacity
+
+    # The dispatcher agrees on its next pass, so nobody comes back.
+    Station.Dispatcher.reconcile()
+    assert Station.FreighterLine.count() == capacity - 1
   end
 
   test "ops can remove a ship that should not be on the screen" do
-    {:ok, name} = DockingBay.dock("Nostromo", "ice")
+    {:ok, name} = DockingBay.dock()
     ref = Process.monitor(Process.whereis(name))
 
     DockingBay.remove(name)
@@ -43,7 +62,7 @@ defmodule Station.DockingBayTest do
   end
 
   test "undocking leaves nothing behind but the leaderboard row" do
-    {:ok, name} = DockingBay.dock("Nostromo", "ice")
+    {:ok, name} = DockingBay.dock()
     :ok = Ship.transfer(name)
     :sys.get_state(Process.whereis(name))
     settle()
@@ -53,12 +72,6 @@ defmodule Station.DockingBayTest do
     assert_receive {:DOWN, ^ref, :process, _, _}
 
     assert Process.whereis(name) == nil
-    assert %{containers: 1} = Station.Leaderboard.get("nostromo")
-  end
-
-  test "reports how much of the atom budget the booth has burned" do
-    assert %{used: used, budget: budget} = DockingBay.atom_budget()
-    assert used >= 0
-    assert budget > 0
+    assert %{containers: 1} = Station.Leaderboard.get(ShipNames.to_slug(name))
   end
 end

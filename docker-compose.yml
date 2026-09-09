@@ -26,7 +26,9 @@ services:
       # The leaderboard survives a redeploy; nothing else is persisted.
       - leaderboard:/var/lib/station
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:4000/"]
+      # Not "/": opening the front door docks a ship, and a probe every thirty
+      # seconds would keep a row of phantom visitors on the television.
+      test: ["CMD", "curl", "-fsS", "http://localhost:4000/leaderboard"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -455,9 +455,16 @@ Four rules the code sticks to, all of which the demo would break without:
 - **Tuning lives in one block at the top of `config/config.exs`.** Anything the
   booth staff might have to change on the first morning belongs there, not in
   code. `mix station.calibrate` measures the result.
-- **Ship names become atoms on purpose.** That is the lesson on the wall. Any
-  change near `Station.ShipNames` or `Station.DockingBay` has to keep the blast
-  radius bounded: fixed charset, length cap, exact accounting, hard budget with
-  a finite fallback pool.
+- **Ship names become atoms on purpose.** That is the lesson on the wall. Every
+  name comes from the fixed pool in `Station.ShipNames`, and nothing takes a
+  name from a visitor - there is no registration form and there must not be
+  one. Any change near `Station.ShipNames` or `Station.DockingBay` has to keep
+  that: only a slug from the pool ever becomes an atom.
+- **Freighters are load, not decoration.** `Station.Freighter` sends real
+  containers through the real path (`Warehouse.accept/2` with a `nil` ship).
+  They never score on the leaderboard, and they deliberately do not divide the
+  inspection cost in `Station.Cargo` the way visitors do - that division holds
+  offered load constant per crowd, and the traffic knob only means anything if
+  more freighters is more load. Off by default; `/ops` turns them on.
 
 No Ecto. All state is in processes, one ETS table and one file on disk.

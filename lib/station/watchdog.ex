@@ -7,8 +7,8 @@ defmodule Station.Watchdog do
   every phone, dashboard and rate limiter reads them from there.
 
   It is also the alarm: if the station is drowning it says so on every screen.
-  There is no background traffic left to shed - all load is visitors - so the
-  fix is the room's, or the ops panel's.
+  It sheds nothing on its own - the fix is the room's, or the ops panel's, and
+  with freighters on `OpsPanel.set_traffic(:off)` is the first thing to try.
   """
 
   use GenServer

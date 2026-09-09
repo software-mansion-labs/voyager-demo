@@ -97,4 +97,6 @@ config :phoenix_live_view,
 # Station: local defaults. The prod values come from the environment, see
 # config/runtime.exs.
 config :station,
-  leaderboard_path: "priv/leaderboard.ets"
+  leaderboard_path: "priv/leaderboard.ets",
+  # The traffic panel at /ops. Username is always `ops`.
+  ops_password: "ops"

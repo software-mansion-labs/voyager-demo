@@ -1,58 +1,40 @@
 defmodule StationWeb.DockController do
   @moduledoc """
-  Registration: two fields, and then the visitor is a process in the tree.
+  The way in and the way out. Neither has a form.
 
-  A plain controller rather than a LiveView, because the whole job is to
-  validate two strings, start a GenServer and put a name in the session. The
-  live part of the visitor's evening starts on the next page.
+  Scanning the code lands on `/`, which docks a ship there and then - a name
+  from the pool, a cargo type by lot - puts it in the session and sends the
+  phone to the cockpit. The only thing between a visitor and the button is the
+  redirect. Leaving undocks the ship and shows what it did, with one button
+  back to a fresh one.
   """
 
   use StationWeb, :controller
 
-  import Phoenix.Component, only: [to_form: 2]
-
-  alias Station.Cargo
   alias Station.DockingBay
+  alias Station.Leaderboard
   alias Station.ShipNames
 
   def new(conn, _params) do
     case current_ship(conn) do
-      nil -> render_form(conn, %{}, nil)
+      nil -> dock(conn)
       _name -> redirect(conn, to: ~p"/ship")
     end
   end
 
-  def create(conn, %{"ship" => %{"name" => name, "cargo" => cargo}}) do
-    case DockingBay.dock(name, cargo) do
-      {:ok, registered} ->
-        conn
-        |> put_session(:ship, ShipNames.to_slug(registered))
-        |> redirect(to: ~p"/ship")
-
-      {:error, :at_capacity} ->
-        conn
-        |> put_flash(
-          :info,
-          "The station is full - #{DockingBay.capacity()} ships docked. You are in observer mode; try again in a minute."
-        )
-        |> redirect(to: ~p"/tv")
-
-      {:error, reason} ->
-        render_form(conn, %{"name" => name, "cargo" => cargo}, error_message(reason))
-    end
-  end
-
-  def create(conn, _params), do: render_form(conn, %{}, "Pick a name and a cargo type.")
-
   def delete(conn, _params) do
-    case current_ship(conn) do
-      nil -> :ok
-      name -> Station.Ship.undock(name)
-    end
+    ship = current_ship(conn)
+    if ship, do: Station.Ship.undock(ship)
+
+    slug = ship && ShipNames.to_slug(ship)
 
     conn
     |> delete_session(:ship)
-    |> redirect(to: ~p"/")
+    |> assign(:page_title, "UNDOCKED · VOYAGER STATION")
+    |> assign(:ship, ship)
+    |> assign(:row, slug && Leaderboard.get(slug))
+    |> assign(:rank, slug && Leaderboard.rank(slug))
+    |> render(:farewell)
   end
 
   @doc """
@@ -75,33 +57,25 @@ defmodule StationWeb.DockController do
     ArgumentError -> nil
   end
 
-  defp render_form(conn, params, error) do
-    conn
-    |> assign(:page_title, "REGISTER YOUR SHIP · VOYAGER STATION")
-    |> assign(:form, to_form(params, as: :ship))
-    |> assign(:error, error)
-    |> assign(:cargo_types, cargo_options())
-    |> assign(:docked, DockingBay.count())
-    |> assign(:capacity, DockingBay.capacity())
-    |> render(:new)
-  end
+  defp dock(conn) do
+    case DockingBay.dock() do
+      {:ok, registered} ->
+        conn
+        |> put_session(:ship, ShipNames.to_slug(registered))
+        |> redirect(to: ~p"/ship")
 
-  defp cargo_options do
-    for type <- Cargo.types() do
-      preset = Cargo.preset(type)
+      {:error, :at_capacity} ->
+        conn
+        |> put_flash(
+          :info,
+          "The station is full - #{DockingBay.capacity()} ships docked. You are in observer mode; try again in a minute."
+        )
+        |> redirect(to: ~p"/tv")
 
-      %{
-        value: type,
-        label: preset.label,
-        bytes: Cargo.container_bytes(type),
-        rounds: preset.inspection_rounds
-      }
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "The docking bay refused that. Try again.")
+        |> redirect(to: ~p"/tv")
     end
   end
-
-  defp error_message(:too_short), do: "That name is too short. Two letters or more, please."
-  defp error_message(:blocked), do: "Pick another name. That one is not going on the big screen."
-  defp error_message(:name_taken), do: "A ship is already docked under that name. Try another."
-  defp error_message(:invalid), do: "Pick a cargo type."
-  defp error_message(_), do: "The docking bay refused that. Try again."
 end

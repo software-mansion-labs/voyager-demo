@@ -25,10 +25,18 @@ config :station, StationWeb.Endpoint,
 
 # The leaderboard snapshot lives outside the release directory, so it is the one
 # thing that survives a redeploy - the third level of the persistence story.
+# The traffic panel at /ops sits behind a password. Required in prod, so a
+# misconfigured deploy fails loudly instead of publishing the switch.
 if config_env() == :prod do
   config :station,
     leaderboard_path:
-      System.get_env("STATION_LEADERBOARD_PATH") || "/var/lib/station/leaderboard.ets"
+      System.get_env("STATION_LEADERBOARD_PATH") || "/var/lib/station/leaderboard.ets",
+    ops_password:
+      System.get_env("STATION_OPS_PASSWORD") ||
+        raise("""
+        environment variable STATION_OPS_PASSWORD is missing.
+        It guards the traffic panel at /ops. Generate one with: openssl rand -base64 24
+        """)
 end
 
 if config_env() == :prod do

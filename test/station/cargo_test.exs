@@ -26,14 +26,18 @@ defmodule Station.CargoTest do
   end
 
   # The crowd divides the cost, so a full room does not bury one clerk under
-  # twenty five times the work - and the punchline ordering above survives it,
-  # because every type is divided by the same room.
-  test "the crowd divides the inspection cost" do
+  # sixteen times the work - and the punchline ordering above survives it,
+  # because every type is divided by the same room. Freighters are not the
+  # room: their count is meant to be the load, so they leave the divisor alone.
+  test "the crowd divides the inspection cost, and freighters do not" do
     solo = Cargo.effective_rounds("ore")
 
-    {:ok, a} = Station.DockingBay.dock("Nostromo", "ice")
-    {:ok, b} = Station.DockingBay.dock("Serenity", "ice")
+    {:ok, a} = Station.DockingBay.dock()
+    {:ok, b} = Station.DockingBay.dock()
 
+    assert Cargo.effective_rounds("ore") == div(solo, 2)
+
+    :ok = Station.OpsPanel.set_traffic(1)
     assert Cargo.effective_rounds("ore") == div(solo, 2)
 
     Station.Ship.undock(a)
