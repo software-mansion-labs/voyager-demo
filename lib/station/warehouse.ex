@@ -105,6 +105,27 @@ defmodule Station.Warehouse do
     for {{:collected, type}, count} <- rows(), into: %{}, do: {type, count}
   end
 
+  @doc """
+  Zeroes the hauled counters - the running total and the per-type ones the
+  television colours crates from. Written from the caller's process: the shelf
+  table is public, and a full warehouse holding its door would not get to a
+  message for a while.
+  """
+  @spec reset_collected() :: :ok
+  def reset_collected do
+    Metrics.put(:collected, 0)
+
+    case :ets.whereis(@shelf) do
+      :undefined ->
+        :ok
+
+      _ref ->
+        for type <- Map.keys(Cargo.presets()), do: :ets.insert(@shelf, {{:collected, type}, 0})
+    end
+
+    :ok
+  end
+
   defp rows do
     case :ets.whereis(@shelf) do
       :undefined -> []

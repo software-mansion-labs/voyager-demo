@@ -192,6 +192,10 @@ defmodule Station.OpsPanel do
   @spec reset_leaderboard() :: :ok
   def reset_leaderboard, do: GenServer.call(__MODULE__, :reset_leaderboard)
 
+  @doc "The HAULED figure on the television back to zero. Cargo and shelf untouched."
+  @spec reset_hauled() :: :ok
+  def reset_hauled, do: GenServer.call(__MODULE__, :reset_hauled)
+
   @doc """
   Undocks every visitor's ship now, and forgets the ones waiting in the hangar.
   Their visitors get a fresh ship on the next scan. Cargo and counters stay.
@@ -282,6 +286,12 @@ defmodule Station.OpsPanel do
     Station.DockingBay.clear()
     Station.Hangar.clear()
     Events.emit(:ops, "#{docked} VISITOR SHIPS UNDOCKED BY OPS", :warning)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:reset_hauled, _from, state) do
+    Warehouse.reset_collected()
+    Events.emit(:ops, "HAULED COUNTER RESET", :warning)
     {:reply, :ok, state}
   end
 

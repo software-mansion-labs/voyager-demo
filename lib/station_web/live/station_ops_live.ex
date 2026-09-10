@@ -197,7 +197,7 @@ defmodule StationWeb.StationOpsLive do
                     the hook from the snapshot - this whole section is behind
                     phx-update="ignore", so what the server renders here is
                     only the frame. --%>
-              <div data-scene-station class="scene-station" style="left: 50%; top: 50%; width: 56%">
+              <div data-scene-station class="scene-station" style="left: 50%; top: 50%; width: 70%">
                 <StationArt.hull class="scene-station-art" />
 
                 <section
@@ -231,7 +231,7 @@ defmodule StationWeb.StationOpsLive do
                   style={style(StationArt.window(:warehouse))}
                 >
                   <h3>
-                    WAREHOUSE
+                    <span class="scene-stage-label">WAREHOUSE</span>
                     <span class="scene-stage-count">
                       <span data-scene-hold-count>0 / 0</span>
                       <span data-scene-memory class="text-primary">0 B</span>

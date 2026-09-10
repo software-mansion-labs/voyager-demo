@@ -23,13 +23,14 @@ defmodule StationWeb.StationArt do
   @height 56
 
   # Window cut-outs, in grid columns: {left, width}. Rows are shared.
-  # Sized to their labels: the pixel font on the television runs twelve pixels
-  # a character, and the warehouse takes whatever is left.
+  # Sized to their figures: INTAKE has to hold six digits and OUTBOUND seven,
+  # grouped, in the pixel font (see .scene-stage-figure b in app.css), and the
+  # warehouse takes whatever is left. Two columns between windows for a pillar.
   @windows %{
-    intake: {14, 18},
-    inspection: {34, 27},
-    warehouse: {63, 59},
-    outbound: {124, 22}
+    intake: {14, 21},
+    inspection: {37, 27},
+    warehouse: {66, 53},
+    outbound: {121, 25}
   }
   @window_top 16
   @window_height 27
@@ -117,9 +118,9 @@ defmodule StationWeb.StationArt do
            end)
          end)
          # Chevrons on the pillars between windows: the direction of cargo.
-         |> chevron(32, 29)
-         |> chevron(61, 29)
-         |> chevron(122, 29)
+         |> chevron(35, 29)
+         |> chevron(64, 29)
+         |> chevron(119, 29)
          # Docking arms out to a ring on either side.
          |> rect(6, 28, 6, 2, :strut)
          |> rect(148, 28, 6, 2, :strut)

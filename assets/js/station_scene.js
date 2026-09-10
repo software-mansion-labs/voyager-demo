@@ -19,8 +19,9 @@
 // freighters, so the people are nearest the station and a ship keeps its
 // place for as long as it is docked. The inner column stops well short of the
 // station's hull, so the containers have a stretch of open space to cross.
-const SHIP_COLUMNS = [15, 5];
-const HAULER_COLUMNS = [86, 94];
+// The hull is 70% of the scene, centred: 15% to 85%. A ship is 5.5% wide.
+const SHIP_COLUMNS = [9, 3.5];
+const HAULER_COLUMNS = [91, 96.5];
 const BERTH_SPACING = 14;
 // Rows run from 16% to 84% of the scene: the DOCKED badge sits above the
 // column and the top berth's label must not run into it.
@@ -535,9 +536,10 @@ function formatBytes(bytes) {
   return `${(value / 1073741824).toFixed(2)} GB`;
 }
 
-// Thousands grouped with a space, the way the phones do it.
+// Thousands grouped with a space, the way the phones do it - a no-break one,
+// so a figure in a narrow window shrinks rather than wraps.
 function formatCount(value) {
-  return String(Math.trunc(Number(value || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return String(Math.trunc(Number(value || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
 }
 
 function escapeHtml(value) {

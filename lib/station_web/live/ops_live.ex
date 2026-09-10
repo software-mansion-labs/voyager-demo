@@ -127,6 +127,11 @@ defmodule StationWeb.OpsLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event("reset_hauled", _params, socket) do
+    OpsPanel.reset_hauled()
+    {:noreply, refresh(socket)}
+  end
+
   # --- warehouse and television ----------------------------------------------
 
   def handle_event("clear_warehouse", _params, socket) do
@@ -450,6 +455,14 @@ defmodule StationWeb.OpsLive do
             value={@settings.hauler_interval_ms}
             hint="Lower drains faster: each hauler waits this long, give or take, then takes a batch. Takes effect on its next trip."
           />
+
+          <.danger_button
+            id="reset-hauled"
+            event="reset_hauled"
+            confirm={"Set the HAULED figure on the television back to zero? It is at #{format_count(@stats.collected)}. Nothing else changes."}
+          >
+            RESET HAULED COUNTER ({format_count(@stats.collected)})
+          </.danger_button>
         </.panel>
 
         <.panel title="WAREHOUSE" tone={if(@stats.full?, do: "text-error", else: "text-secondary")}>

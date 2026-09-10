@@ -62,6 +62,29 @@ defmodule StationWeb.OpsLiveTest do
     assert Station.FreighterLine.count() == 1
   end
 
+  test "the hauled counter can be reset to zero from the panel", %{conn: conn} do
+    for container <- Station.Cargo.build_hold("ice", 3),
+        do: Station.Warehouse.accept(nil, container)
+
+    settle()
+    Station.Warehouse.collect(self(), 3)
+    settle()
+    assert_receive {:cargo_collected, [_, _, _]}
+    assert Station.Warehouse.stats().collected == 3
+    assert %{"ice" => 3} = Station.Warehouse.collected()
+
+    {:ok, view, html} = live(conn, ~p"/ops")
+    assert html =~ "RESET HAULED COUNTER (3)"
+
+    view |> element("#reset-hauled") |> render_click()
+
+    assert Station.Warehouse.stats().collected == 0
+    assert %{"ice" => 0} = Station.Warehouse.collected()
+    # The shelf is not touched: only the running total of what left.
+    assert Station.Metrics.get(:stored) == 0
+    assert render(view) =~ "RESET HAULED COUNTER (0)"
+  end
+
   test "a traffic level is one press", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/ops")
 

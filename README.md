@@ -96,6 +96,7 @@ docker compose exec station bin/station remote
 | `OpsPanel.clear_warehouse()`                    | empty the shelf, the queue and the clerks' queues (also on `/ops`) |
 | `OpsPanel.reset_station()`                      | undock everyone, empty the shelves; the fleet stays   |
 | `OpsPanel.reset_leaderboard()`                  | start a day from zero                                 |
+| `OpsPanel.reset_hauled()`                       | HAULED on the television back to zero (also on `/ops`) |
 
 ### Simulated visitors
 

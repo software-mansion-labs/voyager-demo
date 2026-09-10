@@ -446,6 +446,9 @@ html:has(.tv) {
   transform: translate(-50%, -50%);
   aspect-ratio: 160 / 56;
   pointer-events: none;
+  /* The windows are cut in grid columns of the hull, so the figures inside
+     them are sized from the hull's width too - see .scene-stage-figure b. */
+  container-type: inline-size;
 }
 
 .scene-station-art {
@@ -490,7 +493,10 @@ html:has(.tv) {
 .scene-stage h3 {
   display: flex;
   justify-content: space-between;
-  gap: 0.5rem;
+  /* Two fonts on one line: the pixel label and the mono count sit on a shared
+     baseline, not a shared top edge. */
+  align-items: baseline;
+  gap: 0.4rem;
   overflow: hidden;
   white-space: nowrap;
   font-family: var(--font-pixel);
@@ -499,11 +505,21 @@ html:has(.tv) {
   color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
 }
 
+.scene-stage-label {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The figures are the point and the label is decoration: when the window is
+   too narrow for both, the label loses its tail, never the number. */
 .scene-stage-count {
   display: flex;
-  gap: 0.5rem;
+  flex-shrink: 0;
+  gap: 0.35rem;
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  /* Sized from the hull like the big figures: "1 200 / 1 200  999.9 MB" is
+     22 characters next to a nine character label in a 53 column window. */
+  font-size: min(0.625rem, 1.15cqw);
   color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
 }
 
@@ -519,10 +535,16 @@ html:has(.tv) {
 
 .scene-stage-figure b {
   font-family: var(--font-pixel);
-  font-size: 0.75rem;
+  /* The pixel font runs one em a character. OUTBOUND is 25 of the hull's 160
+     columns and has to hold seven digits and their two group spaces (9 chars),
+     INTAKE is 21 columns and holds six digits (7 chars): the tighter of the
+     two, minus the stage padding, is 1.7cqw of the hull less 0.1rem. Capped
+     at the size it used to be, so a wide screen gets no bigger. */
+  font-size: min(0.75rem, 1.7cqw - 0.1rem);
   font-weight: normal;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* The docking pads are drawn in the art; these are only the targets the
