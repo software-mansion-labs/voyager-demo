@@ -192,7 +192,9 @@ config :station,
       ],
       clerks: 2,
       freighters: 8,
-      haulers: 1
+      haulers: 1,
+      freighter_interval_ms: 2_500,
+      hauler_interval_ms: 3_000
     },
     %{
       id: :cpu_bottleneck,
