@@ -2,10 +2,11 @@ defmodule StationWeb.OpsLive do
   @moduledoc """
   The panel behind the counter.
 
-  Top to bottom, in the order the staff need it during a demo: who is on the
-  screen right now and a way to send any of them home; the simulated visitors
-  and their pace; the clerks who inspect and the haulers who drain; the
-  warehouse's emergency handle; the television. Everything else the staff can
+  Top to bottom, in the order the staff need it during a demo: the rehearsed
+  scenarios, one press each; who is on the screen right now and a way to send
+  any of them home; the simulated visitors and their pace; the clerks who
+  inspect and the haulers who drain; the warehouse's emergency handle; the
+  television. Everything else the staff can
   flip still lives in `Station.OpsPanel` and a remote shell. A phone in a pocket
   beats a laptop with a shell open.
   """
@@ -31,6 +32,7 @@ defmodule StationWeb.OpsLive do
     socket
     |> assign(:page_title, "OPS · VOYAGER STATION")
     |> assign(:levels, levels())
+    |> assign(:scenarios, scenarios())
     |> assign(:count_form, to_form(%{}, as: :traffic))
     |> assign(:clerks_form, to_form(%{}, as: :clerks))
     |> assign(:haulers_form, to_form(%{}, as: :haulers))
@@ -67,6 +69,19 @@ defmodule StationWeb.OpsLive do
   def handle_event("undock_everyone", _params, socket) do
     OpsPanel.set_traffic(0)
     OpsPanel.undock_visitors()
+    {:noreply, refresh(socket)}
+  end
+
+  # --- scenarios -------------------------------------------------------------
+
+  # The id comes off a button we rendered from config, but it is still input
+  # from a browser: only an id from config is ever looked up.
+  def handle_event("scenario", %{"id" => id}, socket) do
+    case Enum.find(scenarios(), fn scenario -> to_string(scenario.id) == id end) do
+      %{id: known} -> OpsPanel.apply_scenario(known)
+      nil -> :ok
+    end
+
     {:noreply, refresh(socket)}
   end
 
@@ -153,6 +168,7 @@ defmodule StationWeb.OpsLive do
 
     socket
     |> assign(:settings, settings)
+    |> assign(:scenario, OpsPanel.current_scenario(settings))
     |> assign(:fleet, fleet)
     |> assign(:visitors, DockingBay.count())
     |> assign(:capacity, DockingBay.capacity())
@@ -203,6 +219,27 @@ defmodule StationWeb.OpsLive do
     |> Enum.sort_by(fn {_name, count} -> count end)
   end
 
+  # Each scenario with the settings it lands on, spelled out once for the card.
+  defp scenarios do
+    Enum.map(OpsPanel.scenarios(), fn scenario ->
+      Map.put(scenario, :summary, scenario |> OpsPanel.scenario_settings() |> summarize())
+    end)
+  end
+
+  defp summarize(settings) do
+    [
+      plural(settings.clerks, "clerk"),
+      plural(settings.freighters, "freighter"),
+      plural(settings.haulers, "hauler"),
+      "container every #{settings.freighter_interval_ms} ms",
+      "pickup every #{settings.hauler_interval_ms} ms"
+    ]
+    |> Enum.join(" · ")
+  end
+
+  defp plural(1, noun), do: "1 #{noun}"
+  defp plural(count, noun), do: "#{count} #{noun}s"
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -238,8 +275,62 @@ defmodule StationWeb.OpsLive do
           />
         </section>
 
-        <%!-- Who is on the screen, and the way to send any of them home. First,
-              because it is the section somebody reaches for in a hurry. --%>
+        <%!-- First, because it is what the presenter reaches for as the story
+              starts: one press, and the station is set up for it. --%>
+        <.panel title="SCENARIOS" tone="text-primary" accent>
+          <:blurb>
+            The rehearsed demos, one press each. A preset sets the clerks, the
+            traffic, the haulers and both paces; whatever it does not name goes
+            back to the config baseline. Nothing is cleared - if the last story
+            left a full warehouse, CLEAR it below before starting the next.
+          </:blurb>
+
+          <div id="scenarios" class="flex flex-col gap-3">
+            <.scenario_card
+              :for={scenario <- @scenarios}
+              id={"scenario-#{scenario.id}"}
+              steps={scenario.steps}
+            >
+              <button
+                type="button"
+                id={"scenario-#{scenario.id}"}
+                phx-click="scenario"
+                phx-value-id={scenario.id}
+                class={[
+                  "pixel-button flex w-full flex-col items-start gap-1 p-3 text-left",
+                  pressed_class(@scenario == scenario.id, "primary")
+                ]}
+              >
+                <span class="font-pixel text-[10px]">{String.upcase(scenario.title)}</span>
+                <span class="font-mono text-[10px] opacity-70">{scenario.summary}</span>
+              </button>
+            </.scenario_card>
+
+            <%!-- Not a preset: the ETS tab needs no station setting to show
+                  the leaderboard table. A script, so it is not forgotten. --%>
+            <.scenario_card
+              id="scenario-ets"
+              steps={[
+                "ETS: the table list. :station_leaderboard, :station_warehouse_shelf and the " <>
+                  "status tables, each with its owner, size and memory. LiveDashboard has no such tab.",
+                "Open :station_leaderboard: one row per ship that ever docked, with what it " <>
+                  "delivered - the same numbers as the board on the television.",
+                "The point of it: the table outlives the process. Kill the warehouse from a " <>
+                  "shell (OpsPanel.restart_warehouse()) and the cargo in flight dies, the " <>
+                  "shelf table with it - the leaderboard does not move."
+              ]}
+            >
+              <div class="flex flex-col items-start gap-1 p-3">
+                <span class="font-pixel text-[10px] text-base-content/70">ETS TABLES</span>
+                <span class="font-mono text-[10px] text-base-content/50">
+                  no preset needed - any of the above will do
+                </span>
+              </div>
+            </.scenario_card>
+          </div>
+        </.panel>
+
+        <%!-- Who is on the screen, and the way to send any of them home. --%>
         <.panel title="DOCKED" tone="text-secondary">
           <:blurb>
             Everyone on the screen. UNDOCK sends a visitor's ship home now - they are
@@ -529,6 +620,24 @@ defmodule StationWeb.OpsLive do
       </p>
       {render_slot(@inner_block)}
     </section>
+    """
+  end
+
+  # One rehearsed demo: the button (or, for a story with no preset, a plain
+  # header) in the inner block, and the presenter's script under it - which
+  # Voyager tab, what to open, what should be happening there.
+  attr :id, :string, required: true
+  attr :steps, :list, required: true
+  slot :inner_block, required: true
+
+  defp scenario_card(assigns) do
+    ~H"""
+    <div id={"#{@id}-card"} class="flex flex-col gap-2 border-2 border-base-300 p-2">
+      {render_slot(@inner_block)}
+      <ol class="flex list-decimal flex-col gap-1.5 pl-6 pr-1 font-mono text-[11px] text-base-content/70">
+        <li :for={step <- @steps}>{step}</li>
+      </ol>
+    </div>
     """
   end
 

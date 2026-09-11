@@ -129,6 +129,90 @@ config :station,
   # The pause with an empty hold before taking on a fresh one.
   freighter_resupply_ms: 4_000,
 
+  # --- scenarios -------------------------------------------------------------
+  # The rehearsed demos, one button each on /ops, in the order they are told.
+  # A scenario names only the knobs it cares about (`clerks`, `freighters`,
+  # `haulers`, `freighter_interval_ms`, `hauler_interval_ms`); anything it does
+  # not name goes back to the baseline above, so two presses in a row always
+  # land on the same station. `steps` is the presenter's script, printed on the
+  # card: which Voyager tab to open, what to click, what should be happening
+  # there, and the live fix to finish on.
+  scenarios: [
+    %{
+      id: :steady_state,
+      title: "Steady state",
+      steps: [
+        "Processes: find Station.Warehouse, clerk_01, the two freighters and the " <>
+          "two haulers. Sort by message queue - everything sits at zero. One " <>
+          "clerk keeps up with two freighters and two haulers take the cargo " <>
+          "away as fast as it clears.",
+        "Node Info: memory flat, run queues at zero. This is the baseline to " <>
+          "compare the other stories against, and the place to come back to " <>
+          "between them."
+      ],
+      clerks: 1,
+      freighters: 2,
+      haulers: 2
+    },
+    %{
+      id: :inspection_queue,
+      title: "Growing inspection queue",
+      steps: [
+        "Processes: sort by message queue length. clerk_01 goes to the top and " <>
+          "keeps climbing - eight freighters, one mailbox. Station.Warehouse " <>
+          "itself stays near zero: it only routes.",
+        "Open clerk_01: message_queue_len and memory grow together, reductions " <>
+          "never stop. Every container in that queue is a term in one " <>
+          "process's heap.",
+        "Node Info: the memory card. The processes slice rises with the queue - " <>
+          "the whole node grows because one mailbox does.",
+        "Fix live: press CREW under INSPECTION below. New clerk processes appear " <>
+          "in Processes and the queue drains across them while the load spreads " <>
+          "over every scheduler."
+      ],
+      clerks: 1,
+      freighters: 8
+    },
+    %{
+      id: :warehouse_filling,
+      title: "Warehouse filling up",
+      steps: [
+        "Processes: sort by memory. Station.Warehouse climbs to the top and " <>
+          "stays there - two clerks clear cargo faster than one hauler takes " <>
+          "it away, and every accepted container is kept in process state.",
+        "Open Station.Warehouse: browse the inbox. Once the shelf is full the " <>
+          "warehouse holds the door and the containers pile up there instead " <>
+          "- nothing is ever thrown away.",
+        "Try fetching its state. Under load the call may time out, and that is " <>
+          "the lesson: a dashboard asking a busy process about itself queues " <>
+          "behind the cargo it is trying to measure.",
+        "Television: the bay window fills; once FULL, QUEUE on this panel " <>
+          "starts climbing. Fix live: x4 under HAULERS below and watch the " <>
+          "warehouse's memory turn around in Processes."
+      ],
+      clerks: 2,
+      freighters: 8,
+      haulers: 1
+    },
+    %{
+      id: :cpu_bottleneck,
+      title: "CPU bottleneck",
+      steps: [
+        "Processes: clerk_01 to clerk_08 are on shift. Sort by message queue - " <>
+          "the queue spreads over all eight and keeps growing, yet some of them " <>
+          "show as waiting, not running, while their queue climbs.",
+        "Node Info: the schedulers card. Two schedulers online, run queues " <>
+          "stacked - the machine has only two cores, so only two clerks ever " <>
+          "run at once. More processes is not more CPU.",
+        "Ease off: set the freighter pace back up under SIMULATED VISITORS, or " <>
+          "press Steady state."
+      ],
+      clerks: 8,
+      freighters: 8,
+      freighter_interval_ms: 300
+    }
+  ],
+
   # --- safety ----------------------------------------------------------------
   watchdog: [max_queue: 5_000, max_run_queue: 200],
   generators: [timestamp_type: :utc_datetime]

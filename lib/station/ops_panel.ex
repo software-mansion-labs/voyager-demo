@@ -21,6 +21,22 @@ defmodule Station.OpsPanel do
 
   @type traffic :: atom() | non_neg_integer()
 
+  @typedoc """
+  A rehearsed demo from `:scenarios` in config: an id, a title, the presenter's
+  steps (which Voyager tab, what to open, what to see), and whichever of the
+  tunable knobs it wants set.
+  """
+  @type scenario :: %{
+          required(:id) => atom(),
+          required(:title) => String.t(),
+          required(:steps) => [String.t()],
+          optional(:clerks) => pos_integer(),
+          optional(:freighters) => non_neg_integer(),
+          optional(:haulers) => non_neg_integer(),
+          optional(:freighter_interval_ms) => pos_integer(),
+          optional(:hauler_interval_ms) => pos_integer()
+        }
+
   @type settings :: %{
           clerks: pos_integer(),
           haulers: non_neg_integer(),
@@ -40,6 +56,10 @@ defmodule Station.OpsPanel do
   # number without a picture.
   @max_clerks 8
   @max_haulers 99
+
+  # The knobs a scenario may set. Everything else on the panel (yield, QR) is
+  # about the room, not the demo, and a preset leaves it alone.
+  @scenario_keys [:clerks, :freighters, :haulers, :freighter_interval_ms, :hauler_interval_ms]
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -172,6 +192,40 @@ defmodule Station.OpsPanel do
     GenServer.call(__MODULE__, {:set_yield_to_visitors, yield?})
   end
 
+  @doc "The rehearsed demos from config, in the order they are told."
+  @spec scenarios() :: [scenario()]
+  def scenarios, do: Application.fetch_env!(:station, :scenarios)
+
+  @doc """
+  The settings a scenario puts in place: what it names, on top of the config
+  baseline for everything it does not. The baseline, not the current setting,
+  so a preset always lands on the same station whatever was pressed before.
+  """
+  @spec scenario_settings(scenario()) :: %{atom() => non_neg_integer()}
+  def scenario_settings(scenario) do
+    defaults() |> Map.take(@scenario_keys) |> Map.merge(Map.take(scenario, @scenario_keys))
+  end
+
+  @doc "The scenario the given (or current) settings match exactly, if any."
+  @spec current_scenario(settings()) :: atom() | nil
+  def current_scenario(settings \\ settings()) do
+    live = Map.take(settings, @scenario_keys)
+    Enum.find_value(scenarios(), fn s -> if scenario_settings(s) == live, do: s.id end)
+  end
+
+  @doc """
+  Puts a scenario's settings in place in one go: clerks, traffic, haulers and
+  both paces. Nothing is cleared - the shelf, the queues and the leaderboard
+  are as they were, so the story can start from where the last one ended.
+  """
+  @spec apply_scenario(atom()) :: :ok | {:error, :unknown_scenario}
+  def apply_scenario(id) when is_atom(id) do
+    case Enum.find(scenarios(), &(&1.id == id)) do
+      nil -> {:error, :unknown_scenario}
+      scenario -> GenServer.call(__MODULE__, {:apply_scenario, scenario})
+    end
+  end
+
   @doc "Kills the warehouse. Its supervisor restarts it, ETS survives, cargo does not."
   @spec restart_warehouse() :: :ok
   def restart_warehouse, do: GenServer.call(__MODULE__, :restart_warehouse)
@@ -259,6 +313,19 @@ defmodule Station.OpsPanel do
     update(:yield_to_visitors, yield?)
     Station.Dispatcher.reconcile()
     Events.emit(:ops, "FREIGHTERS #{if yield?, do: "YIELD TO", else: "STAY FOR"} VISITORS")
+    {:reply, :ok, state}
+  end
+
+  # Same moves as the individual switches, in the same order each makes them:
+  # act on the station, then publish the setting. The paces are read by every
+  # freighter and hauler on its next tick, so they need only the term.
+  def handle_call({:apply_scenario, scenario}, _from, state) do
+    target = scenario_settings(scenario)
+    InspectionCrew.staff(target.clerks)
+    TrafficControl.set_haulers(target.haulers)
+    TrafficControl.set_freighters(target.freighters)
+    settings() |> Map.merge(target) |> put()
+    Events.emit(:ops, "SCENARIO -> #{String.upcase(scenario.title)}")
     {:reply, :ok, state}
   end
 

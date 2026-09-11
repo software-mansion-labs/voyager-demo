@@ -95,6 +95,62 @@ defmodule StationWeb.OpsLiveTest do
     assert render(view) =~ "freighter_01"
   end
 
+  test "a scenario is one press and sets every knob it names", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/ops")
+
+    view |> element("#scenario-cpu_bottleneck") |> render_click()
+
+    assert OpsPanel.clerks() == 8
+    assert Station.InspectionCrew.size() == 8
+    assert OpsPanel.freighters() == 8
+    assert OpsPanel.freighter_interval_ms() == 300
+    # The screen caps the freighters like any ship; the setting is the ask.
+    assert Dispatcher.fleet().freighters == Station.DockingBay.capacity()
+    assert OpsPanel.current_scenario() == :cpu_bottleneck
+    assert has_element?(view, "#scenario-cpu_bottleneck.bg-primary")
+  end
+
+  test "a scenario puts the knobs it does not name back to the baseline", %{conn: conn} do
+    OpsPanel.set_hauler_interval(2_500)
+    OpsPanel.set_haulers(5)
+    {:ok, view, _html} = live(conn, ~p"/ops")
+
+    view |> element("#scenario-inspection_queue") |> render_click()
+
+    assert OpsPanel.clerks() == 1
+    assert OpsPanel.hauler_interval_ms() == Application.fetch_env!(:station, :hauler_interval_ms)
+    assert OpsPanel.haulers() == Application.fetch_env!(:station, :haulers)
+    assert Dispatcher.fleet().haulers == Application.fetch_env!(:station, :haulers)
+
+    # Touch one knob and the preset is no longer the current one.
+    view |> form("#hauler-pace-form", hauler_pace: %{ms: "2500"}) |> render_submit()
+    assert OpsPanel.current_scenario() == nil
+    refute has_element?(view, "#scenario-inspection_queue.bg-primary")
+  end
+
+  test "steady state is a scenario too, and undoes a bottleneck", %{conn: conn} do
+    :ok = OpsPanel.apply_scenario(:cpu_bottleneck)
+    {:ok, view, _html} = live(conn, ~p"/ops")
+
+    view |> element("#scenario-steady_state") |> render_click()
+
+    assert OpsPanel.clerks() == 1
+    assert OpsPanel.freighters() == 2
+    assert OpsPanel.haulers() == 2
+    assert Dispatcher.fleet() == %{haulers: 2, freighters: 2}
+    assert OpsPanel.current_scenario() == :steady_state
+  end
+
+  test "an unknown scenario id is ignored", %{conn: conn} do
+    before = OpsPanel.settings()
+    {:ok, view, _html} = live(conn, ~p"/ops")
+
+    render_click(view, "scenario", %{"id" => "nope"})
+
+    assert OpsPanel.settings() == before
+    assert OpsPanel.apply_scenario(:nope) == {:error, :unknown_scenario}
+  end
+
   test "an exact number is a form, and nonsense is ignored", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/ops")
 
